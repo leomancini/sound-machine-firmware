@@ -23,6 +23,9 @@ class WaveformAnimation(SampleBase):
             os.mkfifo(self.audio_fifo_path)
             os.chmod(self.audio_fifo_path, 0o666)
             
+        # Flag to indicate whether a tag has been scanned
+        self.tag_scanned = False
+            
         print("Starting in grey mode. Waiting for RFID tags...")
         print("  - 0008479619 will turn display RED")
         print("  - 0026068654 will turn display BLUE")
@@ -40,6 +43,9 @@ class WaveformAnimation(SampleBase):
                         print(f"Read tag: '{tag_id}'")
                         
                         with self.lock:
+                            # Set the tag_scanned flag to true once any tag is read
+                            self.tag_scanned = True
+                            
                             if tag_id == "0008479619":
                                 print("Recognized RED tag")
                                 self.color_scheme = 1  # Red
@@ -93,6 +99,7 @@ class WaveformAnimation(SampleBase):
             # Get the current color scheme (thread-safe)
             with self.lock:
                 current_scheme = self.color_scheme
+                has_tag_been_scanned = self.tag_scanned
             
             # Print debug message when color scheme changes
             if last_scheme != current_scheme:
@@ -125,41 +132,48 @@ class WaveformAnimation(SampleBase):
                 green = BRIGHTNESS
                 blue = BRIGHTNESS
             
-            # Generate new wave points based on sine waves and some randomness
-            for x in range(width):
-                # Create a smoother waveform using multiple sine waves
-                y = height // 2
-                y += int(wave_height * math.sin(x/7 + time_var) * 0.5)
-                y += int(wave_height * math.sin(x/4 - time_var*0.7) * 0.3)
-                y += int(wave_height * math.sin(x/10 + time_var*0.5) * 0.2)
+            # Check if a tag has been scanned
+            if has_tag_been_scanned:
+                # Generate new wave points based on sine waves and some randomness
+                for x in range(width):
+                    # Create a smoother waveform using multiple sine waves
+                    y = height // 2
+                    y += int(wave_height * math.sin(x/7 + time_var) * 0.5)
+                    y += int(wave_height * math.sin(x/4 - time_var*0.7) * 0.3)
+                    y += int(wave_height * math.sin(x/10 + time_var*0.5) * 0.2)
+                    
+                    # Add subtle randomness for more natural soundwave look
+                    y += random.randint(-2, 2)
+                    
+                    # Keep within bounds
+                    y = max(1, min(height-2, y))
+                    wave_points[x] = y
                 
-                # Add subtle randomness for more natural soundwave look
-                y += random.randint(-2, 2)
-                
-                # Keep within bounds
-                y = max(1, min(height-2, y))
-                wave_points[x] = y
-            
-            # Draw the waveform
-            for x in range(width):
-                # Draw vertical lines for each point of the waveform
+                # Draw the waveform
+                for x in range(width):
+                    # Draw vertical lines for each point of the waveform
+                    mid_point = height // 2
+                    amplitude = wave_points[x] - mid_point
+                    
+                    # Mirror the wave to get the classic soundwave effect
+                    start_y = mid_point - abs(amplitude)
+                    end_y = mid_point + abs(amplitude)
+                    
+                    for y in range(start_y, end_y + 1):
+                        # Gradient color based on distance from center
+                        intensity = 1.0 - (abs(y - mid_point) / float(height//2))
+                        
+                        # Apply intensity to maintain wave shape but keep overall brightness consistent
+                        pixel_red = int(red * intensity)
+                        pixel_green = int(green * intensity)
+                        pixel_blue = int(blue * intensity)
+                        
+                        offscreen_canvas.SetPixel(x, y, pixel_red, pixel_green, pixel_blue)
+            else:
+                # Before any tag is scanned, just draw a single horizontal gray line
                 mid_point = height // 2
-                amplitude = wave_points[x] - mid_point
-                
-                # Mirror the wave to get the classic soundwave effect
-                start_y = mid_point - abs(amplitude)
-                end_y = mid_point + abs(amplitude)
-                
-                for y in range(start_y, end_y + 1):
-                    # Gradient color based on distance from center
-                    intensity = 1.0 - (abs(y - mid_point) / float(height//2))
-                    
-                    # Apply intensity to maintain wave shape but keep overall brightness consistent
-                    pixel_red = int(red * intensity)
-                    pixel_green = int(green * intensity)
-                    pixel_blue = int(blue * intensity)
-                    
-                    offscreen_canvas.SetPixel(x, y, pixel_red, pixel_green, pixel_blue)
+                for x in range(width):
+                    offscreen_canvas.SetPixel(x, mid_point, BRIGHTNESS, BRIGHTNESS, BRIGHTNESS)
             
             # Update the canvas
             offscreen_canvas = self.matrix.SwapOnVSync(offscreen_canvas)

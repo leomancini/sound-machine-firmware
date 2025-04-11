@@ -2,7 +2,7 @@
 
 # Set the base directory
 #BASE_DIR=~/rpi-rgb-led-matrix/bindings/python/sound-machine
-BASE_DIR=~/sound-machine/scripts
+BASE_DIR=~/sound-machine-firmware/scripts
 
 # Change to the base directory first
 cd $BASE_DIR || {

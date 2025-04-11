@@ -7,7 +7,7 @@ import subprocess
 
 # Configure paths
 FIFO_PATH = "/tmp/rfid_audio_pipe"
-SOUNDS_BASE_DIR = "/home/fcc-005/sound-machine/sounds"  # Base directory for sounds
+SOUNDS_BASE_DIR = "/home/fcc-005/sound-machine-firmware/sounds"  # Base directory for sounds
 
 def play_sound(tag_id):
     # Strip any leading/trailing whitespace from tag_id

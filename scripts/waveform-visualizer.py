@@ -5,6 +5,7 @@ import random
 import threading
 import time
 import os
+import json
 
 class WaveformAnimation(SampleBase):
     def __init__(self, *args, **kwargs):
@@ -22,6 +23,8 @@ class WaveformAnimation(SampleBase):
         self.show_loading_message = True  # Start with loading message
         self.loading_progress = 0  # Progress percentage (0-100)
         self.loading_message = "Loading sounds..."  # Current loading message
+        self.sounds_dir = "sounds"  # Directory containing sound directories
+        self.custom_color = None  # Store custom color from manifest
         
         # Create the pipes if they don't exist
         if not os.path.exists(self.fifo_path):
@@ -46,7 +49,22 @@ class WaveformAnimation(SampleBase):
         print("Starting in grey mode. Waiting for RFID tags...")
         print("  - 0008479619 will turn display RED")
         print("  - 0026068654 will turn display BLUE")
+        print("  - Any tag with a manifest file will use its custom color")
         print("Any other input will return to GREY")
+
+    def get_color_from_manifest(self, tag_id):
+        """Read the manifest file for a given tag ID and return the color."""
+        try:
+            manifest_path = os.path.join(self.sounds_dir, tag_id, "manifest.json")
+            if os.path.exists(manifest_path):
+                with open(manifest_path, 'r') as f:
+                    manifest = json.load(f)
+                    if 'color' in manifest:
+                        print(f"Found color in manifest: {manifest['color']}")
+                        return manifest['color']
+        except Exception as e:
+            print(f"Error reading manifest for tag {tag_id}: {e}")
+        return None
 
     def rfid_reader(self):
         print(f"Reading tags from pipe: {self.fifo_path}")
@@ -63,15 +81,25 @@ class WaveformAnimation(SampleBase):
                             # Set the tag_scanned flag to true once any tag is read
                             self.tag_scanned = True
                             
-                            if tag_id == "0008479619":
+                            # Try to get color from manifest
+                            custom_color = self.get_color_from_manifest(tag_id)
+                            
+                            if custom_color:
+                                print(f"Using custom color from manifest: {custom_color}")
+                                self.custom_color = custom_color
+                                self.color_scheme = 2  # Custom color
+                            elif tag_id == "0008479619":
                                 print("Recognized RED tag")
                                 self.color_scheme = 1  # Red
+                                self.custom_color = None
                             elif tag_id == "0026068654":
                                 print("Recognized BLUE tag")
                                 self.color_scheme = 3  # Blue
+                                self.custom_color = None
                             else:
                                 print(f"Unknown tag: '{tag_id}', setting to GREY")
                                 self.color_scheme = -1  # Grey
+                                self.custom_color = None
                         
                         # Forward the tag ID to the audio player
                         try:
@@ -339,6 +367,11 @@ class WaveformAnimation(SampleBase):
                     print("NOW DISPLAYING: GREY")
                 elif current_scheme == 1:
                     print("NOW DISPLAYING: RED")
+                elif current_scheme == 2:
+                    if self.custom_color:
+                        print(f"NOW DISPLAYING: CUSTOM COLOR ({self.custom_color[0]}, {self.custom_color[1]}, {self.custom_color[2]})")
+                    else:
+                        print("NOW DISPLAYING: CUSTOM COLOR (not available)")
                 elif current_scheme == 3:
                     print("NOW DISPLAYING: BLUE")
                 else:
@@ -355,6 +388,17 @@ class WaveformAnimation(SampleBase):
                 red = BRIGHTNESS
                 green = 0
                 blue = 0
+            elif current_scheme == 2:  # Custom color from manifest
+                if self.custom_color:
+                    # Use the custom color from the manifest
+                    red = self.custom_color[0]
+                    green = self.custom_color[1]
+                    blue = self.custom_color[2]
+                else:
+                    # Fallback to grey if no custom color
+                    red = BRIGHTNESS
+                    green = BRIGHTNESS
+                    blue = BRIGHTNESS
             elif current_scheme == 3:  # Blue dominant (specific for 0026068654)
                 red = 0
                 green = 0

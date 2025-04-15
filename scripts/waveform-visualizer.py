@@ -53,25 +53,26 @@ class WaveformAnimation(SampleBase):
         """Read the manifest file for a given tag ID and return the color."""
         try:
             manifest_path = os.path.join(self.sounds_dir, tag_id, "manifest.json")
-            print(f"Looking for manifest at: {manifest_path}")
+            print(f"DEBUG: Looking for manifest at: {manifest_path}")
             if os.path.exists(manifest_path):
-                print(f"Manifest file exists for tag {tag_id}")
+                print(f"DEBUG: Manifest file exists for tag {tag_id}")
                 with open(manifest_path, 'r') as f:
                     manifest_content = f.read()
-                    print(f"Manifest content: {manifest_content}")
+                    print(f"DEBUG: Raw manifest content: {manifest_content}")
                     manifest = json.load(f)
                     if 'color' in manifest:
                         color = manifest['color']
-                        print(f"Found color in manifest: {color}, type: {type(color)}")
+                        print(f"DEBUG: Found color in manifest: {color}, type: {type(color)}")
                         
                         # Ensure color is in the correct format [r, g, b]
                         if isinstance(color, list) and len(color) == 3:
                             # Already in the correct format
-                            print(f"Color is in correct format: {color}")
+                            print(f"DEBUG: Color is in correct format: {color}")
                             # Ensure all values are integers and within range
                             r = max(0, min(255, int(color[0])))
                             g = max(0, min(255, int(color[1])))
                             b = max(0, min(255, int(color[2])))
+                            print(f"DEBUG: Returning color values: R={r}, G={g}, B={b}")
                             return [r, g, b]
                         elif isinstance(color, dict):
                             # Convert from dict format to list format
@@ -108,7 +109,7 @@ class WaveformAnimation(SampleBase):
                     # Read from the pipe (blocks until data is available)
                     tag_id = fifo.readline().strip()
                     if tag_id:
-                        print(f"Read tag: '{tag_id}'")
+                        print(f"DEBUG: Read tag: '{tag_id}'")
                         
                         with self.lock:
                             # Set the tag_scanned flag to true once any tag is read
@@ -118,12 +119,12 @@ class WaveformAnimation(SampleBase):
                             custom_color = self.get_color_from_manifest(tag_id)
                             
                             if custom_color:
-                                print(f"Using custom color from manifest: {custom_color}")
+                                print(f"DEBUG: Using custom color from manifest: {custom_color}")
                                 # Ensure the color values are integers
                                 self.custom_color = [int(c) for c in custom_color]
-                                print(f"Set custom color to: {self.custom_color}")
+                                print(f"DEBUG: Set custom color to: {self.custom_color}")
                             else:
-                                print(f"No manifest found for tag: '{tag_id}', setting to GREY")
+                                print(f"DEBUG: No manifest found for tag: '{tag_id}', setting to GREY")
                                 self.custom_color = None
                         
                         # Forward the tag ID to the audio player
@@ -393,15 +394,13 @@ class WaveformAnimation(SampleBase):
                 red = custom_color[0]
                 green = custom_color[1]
                 blue = custom_color[2]
-                if debug_colors:
-                    print(f"Using custom color from manifest: R={red}, G={green}, B={blue}")
+                print(f"DEBUG: Drawing waveform with color: R={red}, G={green}, B={blue}")
             else:
                 # Fallback to grey if no custom color
                 red = BRIGHTNESS
                 green = BRIGHTNESS
                 blue = BRIGHTNESS
-                if debug_colors:
-                    print("No custom color available, falling back to grey")
+                print("DEBUG: Drawing waveform in grey mode")
             
             # Check if a tag has been scanned
             if has_tag_been_scanned:

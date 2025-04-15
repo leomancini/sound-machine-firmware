@@ -68,13 +68,14 @@ class WaveformAnimation(SampleBase):
                         if isinstance(color, list) and len(color) == 3:
                             # Already in the correct format
                             print(f"Color is in correct format: {color}")
-                            return color
+                            # Ensure all values are integers
+                            return [int(color[0]), int(color[1]), int(color[2])]
                         elif isinstance(color, dict):
                             # Convert from dict format to list format
                             if 'r' in color and 'g' in color and 'b' in color:
-                                return [color['r'], color['g'], color['b']]
+                                return [int(color['r']), int(color['g']), int(color['b'])]
                             elif 'red' in color and 'green' in color and 'blue' in color:
-                                return [color['red'], color['green'], color['blue']]
+                                return [int(color['red']), int(color['green']), int(color['blue'])]
                         elif isinstance(color, str):
                             # Try to parse hex color
                             if color.startswith('#'):
@@ -115,7 +116,9 @@ class WaveformAnimation(SampleBase):
                             
                             if custom_color:
                                 print(f"Using custom color from manifest: {custom_color}")
-                                self.custom_color = custom_color
+                                # Ensure the color values are integers
+                                self.custom_color = [int(c) for c in custom_color]
+                                print(f"Set custom color to: {self.custom_color}")
                             else:
                                 print(f"No manifest found for tag: '{tag_id}', setting to GREY")
                                 self.custom_color = None
@@ -358,6 +361,9 @@ class WaveformAnimation(SampleBase):
         # Fixed brightness value for all colors
         BRIGHTNESS = 180  # Value between 0-255, where 255 is maximum brightness
         
+        # Debug flag to print color information
+        debug_colors = True
+        
         while True:
             offscreen_canvas.Clear()
             self.usleep(50 * 1000)  # Slightly slower update for smoother animation
@@ -371,6 +377,7 @@ class WaveformAnimation(SampleBase):
                 show_loading = self.show_loading_message
                 loading_progress = self.loading_progress
                 loading_message = self.loading_message
+                custom_color = self.custom_color
             
             # Check if ready message should be hidden
             if show_ready and time.time() - ready_time > self.ready_message_duration:
@@ -378,19 +385,21 @@ class WaveformAnimation(SampleBase):
                     self.show_ready_message = False
             
             # Set colors based on the color scheme, with fixed brightness
-            if self.custom_color:
+            if custom_color is not None:
                 # Always use the custom color from the manifest if available
                 # Ensure color values are within valid range (0-255)
-                red = max(0, min(255, self.custom_color[0]))
-                green = max(0, min(255, self.custom_color[1]))
-                blue = max(0, min(255, self.custom_color[2]))
-                print(f"Using custom color from manifest: R={red}, G={green}, B={blue}")
+                red = max(0, min(255, custom_color[0]))
+                green = max(0, min(255, custom_color[1]))
+                blue = max(0, min(255, custom_color[2]))
+                if debug_colors:
+                    print(f"Using custom color from manifest: R={red}, G={green}, B={blue}")
             else:
                 # Fallback to grey if no custom color
                 red = BRIGHTNESS
                 green = BRIGHTNESS
                 blue = BRIGHTNESS
-                print("No custom color available, falling back to grey")
+                if debug_colors:
+                    print("No custom color available, falling back to grey")
             
             # Check if a tag has been scanned
             if has_tag_been_scanned:
@@ -420,15 +429,9 @@ class WaveformAnimation(SampleBase):
                     end_y = mid_point + abs(amplitude)
                     
                     for y in range(start_y, end_y + 1):
-                        # Gradient color based on distance from center
-                        intensity = 1.0 - (abs(y - mid_point) / float(height//2))
-                        
-                        # Apply intensity to maintain wave shape but keep overall brightness consistent
-                        pixel_red = int(red * intensity)
-                        pixel_green = int(green * intensity)
-                        pixel_blue = int(blue * intensity)
-                        
-                        offscreen_canvas.SetPixel(x, y, pixel_red, pixel_green, pixel_blue)
+                        # Set the pixel with the correct color directly from the manifest
+                        # No intensity scaling needed as the wave shape is already handled by the amplitude
+                        offscreen_canvas.SetPixel(x, y, red, green, blue)
             else:
                 # Before any tag is scanned, just draw a single horizontal gray line
                 mid_point = height // 2

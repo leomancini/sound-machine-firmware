@@ -16,6 +16,10 @@ REMOTE_SERVER = "https://labs.noshado.ws/sound-machine-storage"
 
 # Cache for remote file timestamps
 remote_timestamps = {}
+# Cache for audio file paths
+audio_cache = {}
+# Flag to track if initial sync has been completed
+initial_sync_completed = False
 
 def get_remote_timestamp(url):
     """Get last-modified timestamp of a remote file."""
@@ -68,6 +72,8 @@ def get_remote_sounds():
 
 def sync_sounds():
     """Sync local sounds with remote server."""
+    global initial_sync_completed
+    
     print("Starting sound synchronization...")
     
     # Get list of remote sounds
@@ -138,6 +144,12 @@ def sync_sounds():
                 download_sound(tag_id)
     
     print("Sound synchronization complete")
+    
+    # Build the audio cache after syncing
+    build_audio_cache()
+    
+    # Mark initial sync as completed
+    initial_sync_completed = True
 
 def download_sound(tag_id):
     """Download sound from remote server if not already cached locally."""
@@ -200,17 +212,48 @@ def download_sound(tag_id):
                     pass
         return None
 
+def build_audio_cache():
+    """Build a cache of all available audio files."""
+    global audio_cache
+    audio_cache = {}
+    
+    print("Building audio cache...")
+    try:
+        for item in os.listdir(SOUNDS_BASE_DIR):
+            if os.path.isdir(os.path.join(SOUNDS_BASE_DIR, item)) and item.isdigit():
+                audio_path = os.path.join(SOUNDS_BASE_DIR, item, "audio.mp3")
+                if os.path.exists(audio_path):
+                    audio_cache[item] = audio_path
+                    print(f"Cached audio for tag {item}: {audio_path}")
+    except Exception as e:
+        print(f"Error building audio cache: {e}")
+    
+    print(f"Audio cache built with {len(audio_cache)} entries")
+
 def play_sound(tag_id):
     # Strip any leading/trailing whitespace from tag_id
     tag_id = tag_id.strip()
     
     print(f"Audio player received tag: {tag_id}")
     
-    # Download or get cached audio file
-    audio_path = download_sound(tag_id)
+    # Check if the audio is in the cache
+    if tag_id in audio_cache:
+        audio_path = audio_cache[tag_id]
+        print(f"Using cached audio for tag {tag_id}: {audio_path}")
+    else:
+        # If not in cache and initial sync is not completed, download it
+        if not initial_sync_completed:
+            print(f"Tag {tag_id} not in cache, downloading during initial sync...")
+            audio_path = download_sound(tag_id)
+            if audio_path:
+                # Add to cache for future use
+                audio_cache[tag_id] = audio_path
+        else:
+            print(f"Tag {tag_id} not found in cache and initial sync completed. Skipping.")
+            audio_path = None
     
-    if not audio_path:
-        print(f"Warning: Could not download audio file for tag {tag_id}")
+    if not audio_path or not os.path.exists(audio_path):
+        print(f"Warning: Could not find audio file for tag {tag_id}")
         return
     
     # Kill any currently playing sounds
@@ -258,7 +301,12 @@ def main():
     print(f"Downloading sounds from: {REMOTE_SERVER}/<tag_id>/audio.mp3")
     print(f"Caching sounds in: {SOUNDS_BASE_DIR}")
     
-    # Sync sounds on startup
+    # Sync sounds on startup - this will:
+    # 1. Get list of all sounds on the server
+    # 2. Delete local sounds that no longer exist on the server
+    # 3. Download new sounds that don't exist locally
+    # 4. Update sounds that have changed on the server
+    # 5. Build the audio cache
     sync_sounds()
     
     # Print audio device information

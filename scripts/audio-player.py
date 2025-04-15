@@ -127,6 +127,14 @@ def sync_sounds():
             if (remote_manifest_time != local_manifest_time or 
                 remote_audio_time != local_audio_time):
                 print(f"Sound {tag_id} has changed, updating...")
+                # Remove existing files before downloading new ones
+                try:
+                    if os.path.exists(manifest_path):
+                        os.remove(manifest_path)
+                    if os.path.exists(audio_path):
+                        os.remove(audio_path)
+                except Exception as e:
+                    print(f"Error removing old files for {tag_id}: {e}")
                 download_sound(tag_id)
     
     print("Sound synchronization complete")

@@ -47,10 +47,8 @@ class WaveformAnimation(SampleBase):
         self.tag_scanned = False
             
         print("Starting in grey mode. Waiting for RFID tags...")
-        print("  - 0008479619 will turn display RED")
-        print("  - 0026068654 will turn display BLUE")
-        print("  - Any tag with a manifest file will use its custom color")
-        print("Any other input will return to GREY")
+        print("  - Tags with a manifest file will use their custom color")
+        print("  - Any tag without a manifest will display in GREY")
 
     def get_color_from_manifest(self, tag_id):
         """Read the manifest file for a given tag ID and return the color."""
@@ -88,16 +86,8 @@ class WaveformAnimation(SampleBase):
                                 print(f"Using custom color from manifest: {custom_color}")
                                 self.custom_color = custom_color
                                 self.color_scheme = 2  # Custom color
-                            elif tag_id == "0008479619":
-                                print("Recognized RED tag")
-                                self.color_scheme = 1  # Red
-                                self.custom_color = None
-                            elif tag_id == "0026068654":
-                                print("Recognized BLUE tag")
-                                self.color_scheme = 3  # Blue
-                                self.custom_color = None
                             else:
-                                print(f"Unknown tag: '{tag_id}', setting to GREY")
+                                print(f"No manifest found for tag: '{tag_id}', setting to GREY")
                                 self.color_scheme = -1  # Grey
                                 self.custom_color = None
                         
@@ -365,15 +355,11 @@ class WaveformAnimation(SampleBase):
             if last_scheme != current_scheme:
                 if current_scheme == -1:
                     print("NOW DISPLAYING: GREY")
-                elif current_scheme == 1:
-                    print("NOW DISPLAYING: RED")
                 elif current_scheme == 2:
                     if self.custom_color:
                         print(f"NOW DISPLAYING: CUSTOM COLOR ({self.custom_color[0]}, {self.custom_color[1]}, {self.custom_color[2]})")
                     else:
                         print("NOW DISPLAYING: CUSTOM COLOR (not available)")
-                elif current_scheme == 3:
-                    print("NOW DISPLAYING: BLUE")
                 else:
                     print(f"NOW DISPLAYING: SCHEME {current_scheme}")
                 last_scheme = current_scheme
@@ -384,10 +370,6 @@ class WaveformAnimation(SampleBase):
                 red = BRIGHTNESS
                 green = BRIGHTNESS
                 blue = BRIGHTNESS
-            elif current_scheme == 1:  # Red dominant (specific for 0008479619)
-                red = BRIGHTNESS
-                green = 0
-                blue = 0
             elif current_scheme == 2:  # Custom color from manifest
                 if self.custom_color:
                     # Use the custom color from the manifest
@@ -399,10 +381,6 @@ class WaveformAnimation(SampleBase):
                     red = BRIGHTNESS
                     green = BRIGHTNESS
                     blue = BRIGHTNESS
-            elif current_scheme == 3:  # Blue dominant (specific for 0026068654)
-                red = 0
-                green = 0
-                blue = BRIGHTNESS
             else:  # Fallback to grey
                 red = BRIGHTNESS
                 green = BRIGHTNESS

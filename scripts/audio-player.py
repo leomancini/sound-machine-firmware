@@ -7,11 +7,38 @@ import subprocess
 import requests
 import json
 from pathlib import Path
+from datetime import datetime
 
 # Configure paths
 FIFO_PATH = "/tmp/rfid_audio_pipe"
 SOUNDS_BASE_DIR = "/home/fcc-005/sound-machine-firmware/sounds"  # Base directory for sounds
 REMOTE_SERVER = "https://labs.noshado.ws/sound-machine-storage"
+
+# Cache for remote file timestamps
+remote_timestamps = {}
+
+def get_remote_timestamp(url):
+    """Get last-modified timestamp of a remote file."""
+    if url in remote_timestamps:
+        return remote_timestamps[url]
+        
+    try:
+        response = requests.head(url)
+        response.raise_for_status()
+        if 'last-modified' in response.headers:
+            timestamp = response.headers['last-modified']
+            remote_timestamps[url] = timestamp
+            return timestamp
+    except requests.exceptions.RequestException:
+        pass
+    return None
+
+def get_local_timestamp(file_path):
+    """Get last-modified timestamp of a local file."""
+    try:
+        return datetime.fromtimestamp(os.path.getmtime(file_path)).strftime('%a, %d %b %Y %H:%M:%S GMT')
+    except (IOError, FileNotFoundError):
+        return None
 
 def get_remote_sounds():
     """Get list of all available sounds from the server."""
@@ -76,11 +103,31 @@ def sync_sounds():
             except Exception as e:
                 print(f"Error deleting local sound {tag_id}: {e}")
     
-    # Download new sounds
+    # Download new or changed sounds
     for tag_id in remote_sounds:
+        tag_dir = os.path.join(SOUNDS_BASE_DIR, tag_id)
+        manifest_path = os.path.join(tag_dir, "manifest.json")
+        audio_path = os.path.join(tag_dir, "audio.mp3")
+        
+        # Check if files exist and compare timestamps
+        manifest_url = f"{REMOTE_SERVER}/{tag_id}/manifest.json"
+        audio_url = f"{REMOTE_SERVER}/{tag_id}/audio.mp3"
+        
         if tag_id not in local_sounds:
             print(f"Downloading new sound {tag_id}")
             download_sound(tag_id)
+        else:
+            # Check if files have changed using timestamps
+            remote_manifest_time = get_remote_timestamp(manifest_url)
+            remote_audio_time = get_remote_timestamp(audio_url)
+            
+            local_manifest_time = get_local_timestamp(manifest_path)
+            local_audio_time = get_local_timestamp(audio_path)
+            
+            if (remote_manifest_time != local_manifest_time or 
+                remote_audio_time != local_audio_time):
+                print(f"Sound {tag_id} has changed, updating...")
+                download_sound(tag_id)
     
     print("Sound synchronization complete")
 
@@ -90,38 +137,59 @@ def download_sound(tag_id):
     tag_dir = os.path.join(SOUNDS_BASE_DIR, tag_id)
     os.makedirs(tag_dir, exist_ok=True)
     
-    # Check if we already have the audio file
-    audio_path = os.path.join(tag_dir, "audio.mp3")
     manifest_path = os.path.join(tag_dir, "manifest.json")
+    audio_path = os.path.join(tag_dir, "audio.mp3")
+    manifest_url = f"{REMOTE_SERVER}/{tag_id}/manifest.json"
+    audio_url = f"{REMOTE_SERVER}/{tag_id}/audio.mp3"
     
-    # If both files exist, we're done
-    if os.path.exists(audio_path) and os.path.exists(manifest_path):
-        return audio_path
+    # Get remote timestamps
+    remote_manifest_time = get_remote_timestamp(manifest_url)
+    remote_audio_time = get_remote_timestamp(audio_url)
     
-    # Download manifest first
+    # Get local timestamps
+    local_manifest_time = get_local_timestamp(manifest_path)
+    local_audio_time = get_local_timestamp(audio_path)
+    
+    # Download only changed files
     try:
-        manifest_url = f"{REMOTE_SERVER}/{tag_id}/manifest.json"
-        response = requests.get(manifest_url)
-        response.raise_for_status()
-        
-        # Save manifest
-        with open(manifest_path, 'w') as f:
-            f.write(response.text)
+        # Download manifest if changed or doesn't exist
+        if remote_manifest_time != local_manifest_time or not os.path.exists(manifest_path):
+            print(f"Updating manifest for {tag_id}")
+            response = requests.get(manifest_url)
+            response.raise_for_status()
             
-        # Download audio file
-        audio_url = f"{REMOTE_SERVER}/{tag_id}/audio.mp3"
-        response = requests.get(audio_url)
-        response.raise_for_status()
-        
-        # Save audio file
-        with open(audio_path, 'wb') as f:
-            f.write(response.content)
+            # Save to temporary file first
+            temp_manifest = f"{manifest_path}.tmp"
+            with open(temp_manifest, 'w') as f:
+                f.write(response.text)
+            # Atomic rename
+            os.rename(temp_manifest, manifest_path)
             
-        print(f"Successfully downloaded sound for tag {tag_id}")
+        # Download audio if changed or doesn't exist
+        if remote_audio_time != local_audio_time or not os.path.exists(audio_path):
+            print(f"Updating audio for {tag_id}")
+            response = requests.get(audio_url)
+            response.raise_for_status()
+            
+            # Save to temporary file first
+            temp_audio = f"{audio_path}.tmp"
+            with open(temp_audio, 'wb') as f:
+                f.write(response.content)
+            # Atomic rename
+            os.rename(temp_audio, audio_path)
+            
+        print(f"Successfully updated sound for tag {tag_id}")
         return audio_path
         
     except requests.exceptions.RequestException as e:
         print(f"Error downloading sound for tag {tag_id}: {e}")
+        # Clean up any temporary files
+        for temp_file in [f"{manifest_path}.tmp", f"{audio_path}.tmp"]:
+            if os.path.exists(temp_file):
+                try:
+                    os.remove(temp_file)
+                except:
+                    pass
         return None
 
 def play_sound(tag_id):

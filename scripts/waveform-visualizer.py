@@ -22,7 +22,11 @@ class WaveformAnimation(SampleBase):
         self.show_loading_message = True  # Start with loading message
         self.loading_progress = 0  # Progress percentage (0-100)
         self.loading_message = "Loading sounds..."  # Current loading message
-        self.sounds_dir = "sounds"  # Directory containing sound directories
+        
+        # Use the correct system path for sounds
+        self.sounds_dir = "/home/fcc-005/sound-machine-firmware/sounds"
+        print(f"DEBUG: Sounds directory set to: {self.sounds_dir}")
+        
         self.custom_color = None  # Store custom color from manifest
         
         # Create the pipes if they don't exist

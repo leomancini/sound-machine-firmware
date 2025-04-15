@@ -209,9 +209,20 @@ class WaveformAnimation(SampleBase):
         char_height = 7
         char_spacing = 1
         
+        # Calculate total width of the text to center it properly
+        total_width = 0
+        for char in text:
+            if char in font:
+                total_width += char_width + char_spacing
+        
+        # Adjust starting x position to account for horizontal flip
+        x = x + total_width - char_spacing
+        
         for i, char in enumerate(text):
             if char in font:
-                char_x = x + i * (char_width + char_spacing)
+                # Calculate position with horizontal flip
+                char_x = x - i * (char_width + char_spacing)
+                
                 for row in range(char_height):
                     for col in range(char_width):
                         if font[char][row][col] == 1:

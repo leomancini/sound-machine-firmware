@@ -255,6 +255,9 @@ class WaveformAnimation(SampleBase):
         # Adjust starting x position to account for horizontal flip
         x = x + total_width - char_spacing
         
+        # Pre-calculate all pixels to draw for better performance
+        pixels_to_draw = []
+        
         for i, char in enumerate(text):
             if char in font:
                 # Calculate position with horizontal flip
@@ -265,14 +268,21 @@ class WaveformAnimation(SampleBase):
                         if font[char][row][col] == 1:
                             # Flip vertically by calculating the flipped y position
                             flipped_y = y + (char_height - 1 - row)
-                            canvas.SetPixel(char_x + col, flipped_y, color[0], color[1], color[2])
+                            pixels_to_draw.append((char_x + col, flipped_y, color[0], color[1], color[2]))
+        
+        # Draw all pixels at once
+        for px, py, r, g, b in pixels_to_draw:
+            canvas.SetPixel(px, py, r, g, b)
 
     def draw_progress_bar(self, canvas, x, y, width, height, progress, color):
         """Draw a progress bar on the canvas."""
+        # Pre-calculate all pixels to draw for better performance
+        pixels_to_draw = []
+        
         # Draw the background (empty bar)
         for i in range(x, x + width):
             for j in range(y, y + height):
-                canvas.SetPixel(i, j, 50, 50, 50)  # Dark gray background
+                pixels_to_draw.append((i, j, 50, 50, 50))  # Dark gray background
         
         # Calculate the filled portion width
         filled_width = int(width * progress / 100)
@@ -280,7 +290,11 @@ class WaveformAnimation(SampleBase):
         # Draw the filled portion
         for i in range(x, x + filled_width):
             for j in range(y, y + height):
-                canvas.SetPixel(i, j, color[0], color[1], color[2])
+                pixels_to_draw.append((i, j, color[0], color[1], color[2]))
+        
+        # Draw all pixels at once
+        for px, py, r, g, b in pixels_to_draw:
+            canvas.SetPixel(px, py, r, g, b)
 
     def run(self):
         # Start the RFID reader in a separate thread
@@ -309,13 +323,17 @@ class WaveformAnimation(SampleBase):
             wave_points.append(height // 2)
         
         last_scheme = None
+        last_progress = -1  # Track last progress value to avoid unnecessary redraws
         
         # Fixed brightness value for all colors
         BRIGHTNESS = 180  # Value between 0-255, where 255 is maximum brightness
         
+        # Cache for color values
+        color_cache = {}
+        
         while True:
             offscreen_canvas.Clear()
-            self.usleep(50 * 1000)  # Slightly slower update for smoother animation
+            self.usleep(100 * 1000)  # Slower update for better performance (100ms instead of 50ms)
             time_var += 0.2
             
             # Get the current color scheme (thread-safe)
@@ -409,42 +427,46 @@ class WaveformAnimation(SampleBase):
             
             # Draw loading message if needed
             if show_loading:
-                # Draw the loading message
-                text = "LOADING"
-                text_width = len(text) * 6  # 5 pixels wide + 1 pixel spacing
-                text_x = (width - text_width) // 2
-                text_y = (height - 7) // 2 - 10  # Position above the progress bar
-                
-                # Draw the text in white
-                self.draw_text(offscreen_canvas, text, text_x, text_y, (255, 255, 255))
-                
-                # Draw the progress bar
-                bar_width = width - 20  # Leave some margin
-                bar_height = 5
-                bar_x = 10
-                bar_y = (height - 7) // 2 + 5  # Position below the text
-                
-                # Draw the progress bar
-                self.draw_progress_bar(offscreen_canvas, bar_x, bar_y, bar_width, bar_height, 
-                                      loading_progress, (255, 255, 255))
-                
-                # Draw the progress percentage
-                percent_text = f"{loading_progress}%"
-                percent_width = len(percent_text) * 6
-                percent_x = (width - percent_width) // 2
-                percent_y = bar_y + bar_height + 5
-                
-                # Draw the percentage text
-                self.draw_text(offscreen_canvas, percent_text, percent_x, percent_y, (255, 255, 255))
-                
-                # Draw the loading message
-                message_text = loading_message
-                message_width = len(message_text) * 6
-                message_x = (width - message_width) // 2
-                message_y = percent_y + 10
-                
-                # Draw the message text
-                self.draw_text(offscreen_canvas, message_text, message_x, message_y, (255, 255, 255))
+                # Only redraw if progress has changed
+                if loading_progress != last_progress:
+                    # Draw the loading message
+                    text = "LOADING"
+                    text_width = len(text) * 6  # 5 pixels wide + 1 pixel spacing
+                    text_x = (width - text_width) // 2
+                    text_y = (height - 7) // 2 - 10  # Position above the progress bar
+                    
+                    # Draw the text in white
+                    self.draw_text(offscreen_canvas, text, text_x, text_y, (255, 255, 255))
+                    
+                    # Draw the progress bar
+                    bar_width = width - 20  # Leave some margin
+                    bar_height = 5
+                    bar_x = 10
+                    bar_y = (height - 7) // 2 + 5  # Position below the text
+                    
+                    # Draw the progress bar
+                    self.draw_progress_bar(offscreen_canvas, bar_x, bar_y, bar_width, bar_height, 
+                                          loading_progress, (255, 255, 255))
+                    
+                    # Draw the progress percentage
+                    percent_text = f"{loading_progress}%"
+                    percent_width = len(percent_text) * 6
+                    percent_x = (width - percent_width) // 2
+                    percent_y = bar_y + bar_height + 5
+                    
+                    # Draw the percentage text
+                    self.draw_text(offscreen_canvas, percent_text, percent_x, percent_y, (255, 255, 255))
+                    
+                    # Draw the loading message
+                    message_text = loading_message
+                    message_width = len(message_text) * 6
+                    message_x = (width - message_width) // 2
+                    message_y = percent_y + 10
+                    
+                    # Draw the message text
+                    self.draw_text(offscreen_canvas, message_text, message_x, message_y, (255, 255, 255))
+                    
+                    last_progress = loading_progress
             
             # Draw ready message if needed
             if show_ready:

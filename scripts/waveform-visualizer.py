@@ -68,8 +68,11 @@ class WaveformAnimation(SampleBase):
                         if isinstance(color, list) and len(color) == 3:
                             # Already in the correct format
                             print(f"Color is in correct format: {color}")
-                            # Ensure all values are integers
-                            return [int(color[0]), int(color[1]), int(color[2])]
+                            # Ensure all values are integers and within range
+                            r = max(0, min(255, int(color[0])))
+                            g = max(0, min(255, int(color[1])))
+                            b = max(0, min(255, int(color[2])))
+                            return [r, g, b]
                         elif isinstance(color, dict):
                             # Convert from dict format to list format
                             if 'r' in color and 'g' in color and 'b' in color:
@@ -386,11 +389,10 @@ class WaveformAnimation(SampleBase):
             
             # Set colors based on the color scheme, with fixed brightness
             if custom_color is not None:
-                # Always use the custom color from the manifest if available
-                # Ensure color values are within valid range (0-255)
-                red = max(0, min(255, custom_color[0]))
-                green = max(0, min(255, custom_color[1]))
-                blue = max(0, min(255, custom_color[2]))
+                # Use the custom color from the manifest directly
+                red = custom_color[0]
+                green = custom_color[1]
+                blue = custom_color[2]
                 if debug_colors:
                     print(f"Using custom color from manifest: R={red}, G={green}, B={blue}")
             else:

@@ -5,6 +5,7 @@ import random
 import threading
 import time
 import os
+import json
 
 class WaveformAnimation(SampleBase):
     def __init__(self, *args, **kwargs):
@@ -22,6 +23,9 @@ class WaveformAnimation(SampleBase):
         self.show_loading_message = True  # Start with loading message
         self.loading_progress = 0  # Progress percentage (0-100)
         self.loading_message = "Loading sounds..."  # Current loading message
+        
+        # Dictionary to store colors for each tag
+        self.tag_colors = {}
         
         # Create the pipes if they don't exist
         if not os.path.exists(self.fifo_path):
@@ -63,6 +67,9 @@ class WaveformAnimation(SampleBase):
                             # Set the tag_scanned flag to true once any tag is read
                             self.tag_scanned = True
                             
+                            # Try to get the color from the manifest.json file
+                            self.update_tag_color(tag_id)
+                            
                             if tag_id == "0008479619":
                                 print("Recognized RED tag")
                                 self.color_scheme = 1  # Red
@@ -84,6 +91,31 @@ class WaveformAnimation(SampleBase):
             except Exception as e:
                 print(f"Error reading from pipe: {e}")
                 time.sleep(1)  # Wait before trying to reopen the pipe
+
+    def update_tag_color(self, tag_id):
+        """Update the color for a tag by reading from its manifest.json file."""
+        try:
+            # Path to the sounds directory
+            sounds_dir = os.path.expanduser("~/sounds")
+            tag_dir = os.path.join(sounds_dir, tag_id)
+            manifest_path = os.path.join(tag_dir, "manifest.json")
+            
+            # Check if the manifest file exists
+            if os.path.exists(manifest_path):
+                with open(manifest_path, 'r') as f:
+                    manifest_data = json.load(f)
+                    
+                # Check if the color key exists in the manifest
+                if 'color' in manifest_data and isinstance(manifest_data['color'], list) and len(manifest_data['color']) == 3:
+                    color = manifest_data['color']
+                    self.tag_colors[tag_id] = color
+                    print(f"Updated color for tag {tag_id}: {color}")
+                else:
+                    print(f"No valid color found in manifest for tag {tag_id}")
+            else:
+                print(f"No manifest file found for tag {tag_id}")
+        except Exception as e:
+            print(f"Error reading manifest for tag {tag_id}: {e}")
 
     def ready_reader(self):
         """Thread function to read from the ready pipe."""
@@ -324,6 +356,7 @@ class WaveformAnimation(SampleBase):
         
         last_scheme = None
         last_progress = -1  # Track last progress value to avoid unnecessary redraws
+        current_tag_id = None  # Track the current tag ID
         
         # Fixed brightness value for all colors
         BRIGHTNESS = 180  # Value between 0-255, where 255 is maximum brightness
@@ -345,6 +378,14 @@ class WaveformAnimation(SampleBase):
                 show_loading = self.show_loading_message
                 loading_progress = self.loading_progress
                 loading_message = self.loading_message
+                
+                # Get the current tag ID based on the color scheme
+                if current_scheme == 1:
+                    current_tag_id = "0008479619"
+                elif current_scheme == 3:
+                    current_tag_id = "0026068654"
+                else:
+                    current_tag_id = None
             
             # Check if ready message should be hidden
             if show_ready and time.time() - ready_time > self.ready_message_duration:
@@ -370,13 +411,31 @@ class WaveformAnimation(SampleBase):
                 green = BRIGHTNESS
                 blue = BRIGHTNESS
             elif current_scheme == 1:  # Red dominant (specific for 0008479619)
-                red = BRIGHTNESS
-                green = 0
-                blue = 0
+                # Use the color from manifest.json if available
+                if current_tag_id in self.tag_colors:
+                    color = self.tag_colors[current_tag_id]
+                    red = color[0]
+                    green = color[1]
+                    blue = color[2]
+                    print(f"Using manifest color for tag {current_tag_id}: {color}")
+                else:
+                    # Fallback to default red
+                    red = BRIGHTNESS
+                    green = 0
+                    blue = 0
             elif current_scheme == 3:  # Blue dominant (specific for 0026068654)
-                red = 0
-                green = 0
-                blue = BRIGHTNESS
+                # Use the color from manifest.json if available
+                if current_tag_id in self.tag_colors:
+                    color = self.tag_colors[current_tag_id]
+                    red = color[0]
+                    green = color[1]
+                    blue = color[2]
+                    print(f"Using manifest color for tag {current_tag_id}: {color}")
+                else:
+                    # Fallback to default blue
+                    red = 0
+                    green = 0
+                    blue = BRIGHTNESS
             else:  # Fallback to grey
                 red = BRIGHTNESS
                 green = BRIGHTNESS

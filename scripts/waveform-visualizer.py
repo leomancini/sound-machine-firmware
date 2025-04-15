@@ -10,7 +10,6 @@ import json
 class WaveformAnimation(SampleBase):
     def __init__(self, *args, **kwargs):
         super(WaveformAnimation, self).__init__(*args, **kwargs)
-        self.color_scheme = -1  # Start with grey (-1 = grey, 1 = red, 3 = blue)
         self.lock = threading.Lock()
         self.fifo_path = "/tmp/rfid_pipe"
         self.audio_fifo_path = "/tmp/rfid_audio_pipe"
@@ -54,12 +53,44 @@ class WaveformAnimation(SampleBase):
         """Read the manifest file for a given tag ID and return the color."""
         try:
             manifest_path = os.path.join(self.sounds_dir, tag_id, "manifest.json")
+            print(f"Looking for manifest at: {manifest_path}")
             if os.path.exists(manifest_path):
+                print(f"Manifest file exists for tag {tag_id}")
                 with open(manifest_path, 'r') as f:
+                    manifest_content = f.read()
+                    print(f"Manifest content: {manifest_content}")
                     manifest = json.load(f)
                     if 'color' in manifest:
-                        print(f"Found color in manifest: {manifest['color']}")
-                        return manifest['color']
+                        color = manifest['color']
+                        print(f"Found color in manifest: {color}, type: {type(color)}")
+                        
+                        # Ensure color is in the correct format [r, g, b]
+                        if isinstance(color, list) and len(color) == 3:
+                            # Already in the correct format
+                            print(f"Color is in correct format: {color}")
+                            return color
+                        elif isinstance(color, dict):
+                            # Convert from dict format to list format
+                            if 'r' in color and 'g' in color and 'b' in color:
+                                return [color['r'], color['g'], color['b']]
+                            elif 'red' in color and 'green' in color and 'blue' in color:
+                                return [color['red'], color['green'], color['blue']]
+                        elif isinstance(color, str):
+                            # Try to parse hex color
+                            if color.startswith('#'):
+                                # Convert hex to RGB
+                                hex_color = color.lstrip('#')
+                                if len(hex_color) == 6:
+                                    r = int(hex_color[0:2], 16)
+                                    g = int(hex_color[2:4], 16)
+                                    b = int(hex_color[4:6], 16)
+                                    return [r, g, b]
+                        
+                        print(f"Color format not recognized: {color}")
+                    else:
+                        print(f"No 'color' key found in manifest for tag {tag_id}")
+            else:
+                print(f"Manifest file does not exist for tag {tag_id}")
         except Exception as e:
             print(f"Error reading manifest for tag {tag_id}: {e}")
         return None
@@ -85,10 +116,8 @@ class WaveformAnimation(SampleBase):
                             if custom_color:
                                 print(f"Using custom color from manifest: {custom_color}")
                                 self.custom_color = custom_color
-                                self.color_scheme = 2  # Custom color
                             else:
                                 print(f"No manifest found for tag: '{tag_id}', setting to GREY")
-                                self.color_scheme = -1  # Grey
                                 self.custom_color = None
                         
                         # Forward the tag ID to the audio player
@@ -326,8 +355,6 @@ class WaveformAnimation(SampleBase):
         for i in range(width):
             wave_points.append(height // 2)
         
-        last_scheme = None
-        
         # Fixed brightness value for all colors
         BRIGHTNESS = 180  # Value between 0-255, where 255 is maximum brightness
         
@@ -336,9 +363,8 @@ class WaveformAnimation(SampleBase):
             self.usleep(50 * 1000)  # Slightly slower update for smoother animation
             time_var += 0.2
             
-            # Get the current color scheme (thread-safe)
+            # Get the current state (thread-safe)
             with self.lock:
-                current_scheme = self.color_scheme
                 has_tag_been_scanned = self.tag_scanned
                 show_ready = self.show_ready_message
                 ready_time = self.ready_message_time
@@ -351,40 +377,20 @@ class WaveformAnimation(SampleBase):
                 with self.lock:
                     self.show_ready_message = False
             
-            # Print debug message when color scheme changes
-            if last_scheme != current_scheme:
-                if current_scheme == -1:
-                    print("NOW DISPLAYING: GREY")
-                elif current_scheme == 2:
-                    if self.custom_color:
-                        print(f"NOW DISPLAYING: CUSTOM COLOR ({self.custom_color[0]}, {self.custom_color[1]}, {self.custom_color[2]})")
-                    else:
-                        print("NOW DISPLAYING: CUSTOM COLOR (not available)")
-                else:
-                    print(f"NOW DISPLAYING: SCHEME {current_scheme}")
-                last_scheme = current_scheme
-            
             # Set colors based on the color scheme, with fixed brightness
-            if current_scheme == -1:  # Grey (default)
-                # Equal RGB values for grey
+            if self.custom_color:
+                # Always use the custom color from the manifest if available
+                # Ensure color values are within valid range (0-255)
+                red = max(0, min(255, self.custom_color[0]))
+                green = max(0, min(255, self.custom_color[1]))
+                blue = max(0, min(255, self.custom_color[2]))
+                print(f"Using custom color from manifest: R={red}, G={green}, B={blue}")
+            else:
+                # Fallback to grey if no custom color
                 red = BRIGHTNESS
                 green = BRIGHTNESS
                 blue = BRIGHTNESS
-            elif current_scheme == 2:  # Custom color from manifest
-                if self.custom_color:
-                    # Use the custom color from the manifest
-                    red = self.custom_color[0]
-                    green = self.custom_color[1]
-                    blue = self.custom_color[2]
-                else:
-                    # Fallback to grey if no custom color
-                    red = BRIGHTNESS
-                    green = BRIGHTNESS
-                    blue = BRIGHTNESS
-            else:  # Fallback to grey
-                red = BRIGHTNESS
-                green = BRIGHTNESS
-                blue = BRIGHTNESS
+                print("No custom color available, falling back to grey")
             
             # Check if a tag has been scanned
             if has_tag_been_scanned:

@@ -18,6 +18,9 @@ class WaveformAnimation(SampleBase):
         self.show_ready_message = False
         self.ready_message_time = 0
         self.ready_message_duration = 5  # Show ready message for 5 seconds
+        self.show_loading_message = True  # Start with loading message
+        self.loading_dots = 0  # For loading animation
+        self.last_dot_update = 0  # For loading animation timing
         
         # Create the pipes if they don't exist
         if not os.path.exists(self.fifo_path):
@@ -89,6 +92,7 @@ class WaveformAnimation(SampleBase):
                     if message == self.ready_message:
                         print("Received READY signal from audio player")
                         with self.lock:
+                            self.show_loading_message = False  # Hide loading message
                             self.show_ready_message = True
                             self.ready_message_time = time.time()
             except Exception as e:
@@ -143,6 +147,60 @@ class WaveformAnimation(SampleBase):
                 [0, 0, 1, 0, 0],
                 [0, 0, 1, 0, 0],
                 [0, 0, 1, 0, 0]
+            ],
+            'L': [
+                [1, 0, 0, 0, 0],
+                [1, 0, 0, 0, 0],
+                [1, 0, 0, 0, 0],
+                [1, 0, 0, 0, 0],
+                [1, 0, 0, 0, 0],
+                [1, 0, 0, 0, 0],
+                [1, 1, 1, 1, 1]
+            ],
+            'O': [
+                [0, 1, 1, 1, 0],
+                [1, 0, 0, 0, 1],
+                [1, 0, 0, 0, 1],
+                [1, 0, 0, 0, 1],
+                [1, 0, 0, 0, 1],
+                [1, 0, 0, 0, 1],
+                [0, 1, 1, 1, 0]
+            ],
+            'I': [
+                [0, 0, 1, 0, 0],
+                [0, 0, 1, 0, 0],
+                [0, 0, 1, 0, 0],
+                [0, 0, 1, 0, 0],
+                [0, 0, 1, 0, 0],
+                [0, 0, 1, 0, 0],
+                [0, 0, 1, 0, 0]
+            ],
+            'N': [
+                [1, 0, 0, 0, 1],
+                [1, 1, 0, 0, 1],
+                [1, 0, 1, 0, 1],
+                [1, 0, 0, 1, 1],
+                [1, 0, 0, 0, 1],
+                [1, 0, 0, 0, 1],
+                [1, 0, 0, 0, 1]
+            ],
+            'G': [
+                [0, 1, 1, 1, 0],
+                [1, 0, 0, 0, 1],
+                [1, 0, 0, 0, 0],
+                [1, 0, 1, 1, 1],
+                [1, 0, 0, 0, 1],
+                [1, 0, 0, 0, 1],
+                [0, 1, 1, 1, 0]
+            ],
+            '.': [
+                [0, 0, 0, 0, 0],
+                [0, 0, 0, 0, 0],
+                [0, 0, 0, 0, 0],
+                [0, 0, 0, 0, 0],
+                [0, 0, 0, 0, 0],
+                [0, 0, 1, 0, 0],
+                [0, 0, 1, 0, 0]
             ]
         }
         
@@ -157,7 +215,9 @@ class WaveformAnimation(SampleBase):
                 for row in range(char_height):
                     for col in range(char_width):
                         if font[char][row][col] == 1:
-                            canvas.SetPixel(char_x + col, y + row, color[0], color[1], color[2])
+                            # Flip vertically by calculating the flipped y position
+                            flipped_y = y + (char_height - 1 - row)
+                            canvas.SetPixel(char_x + col, flipped_y, color[0], color[1], color[2])
 
     def run(self):
         # Start the RFID reader in a separate thread
@@ -197,6 +257,16 @@ class WaveformAnimation(SampleBase):
                 has_tag_been_scanned = self.tag_scanned
                 show_ready = self.show_ready_message
                 ready_time = self.ready_message_time
+                show_loading = self.show_loading_message
+                loading_dots = self.loading_dots
+                last_dot_update = self.last_dot_update
+            
+            # Update loading dots animation
+            current_time = time.time()
+            if show_loading and current_time - last_dot_update > 0.5:
+                with self.lock:
+                    self.loading_dots = (self.loading_dots + 1) % 4
+                    self.last_dot_update = current_time
             
             # Check if ready message should be hidden
             if show_ready and time.time() - ready_time > self.ready_message_duration:
@@ -276,6 +346,17 @@ class WaveformAnimation(SampleBase):
                 mid_point = height // 2
                 for x in range(width):
                     offscreen_canvas.SetPixel(x, mid_point, BRIGHTNESS, BRIGHTNESS, BRIGHTNESS)
+            
+            # Draw loading message if needed
+            if show_loading:
+                # Calculate position to center the text
+                text = "LOADING" + "." * loading_dots
+                text_width = len(text) * 6  # 5 pixels wide + 1 pixel spacing
+                text_x = (width - text_width) // 2
+                text_y = (height - 7) // 2  # 7 pixels high
+                
+                # Draw the text in white
+                self.draw_text(offscreen_canvas, text, text_x, text_y, (255, 255, 255))
             
             # Draw ready message if needed
             if show_ready:

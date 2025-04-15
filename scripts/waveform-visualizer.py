@@ -13,6 +13,11 @@ class WaveformAnimation(SampleBase):
         self.lock = threading.Lock()
         self.fifo_path = "/tmp/rfid_pipe"
         self.audio_fifo_path = "/tmp/rfid_audio_pipe"
+        self.ready_pipe_path = "/tmp/ready_pipe"
+        self.ready_message = "READY"
+        self.show_ready_message = False
+        self.ready_message_time = 0
+        self.ready_message_duration = 5  # Show ready message for 5 seconds
         
         # Create the pipes if they don't exist
         if not os.path.exists(self.fifo_path):
@@ -22,6 +27,10 @@ class WaveformAnimation(SampleBase):
         if not os.path.exists(self.audio_fifo_path):
             os.mkfifo(self.audio_fifo_path)
             os.chmod(self.audio_fifo_path, 0o666)
+            
+        if not os.path.exists(self.ready_pipe_path):
+            os.mkfifo(self.ready_pipe_path)
+            os.chmod(self.ready_pipe_path, 0o666)
             
         # Flag to indicate whether a tag has been scanned
         self.tag_scanned = False
@@ -68,10 +77,96 @@ class WaveformAnimation(SampleBase):
                 print(f"Error reading from pipe: {e}")
                 time.sleep(1)  # Wait before trying to reopen the pipe
 
+    def ready_reader(self):
+        """Thread function to read from the ready pipe."""
+        print(f"Reading ready signals from pipe: {self.ready_pipe_path}")
+        while True:
+            try:
+                # Open the pipe for reading (blocking operation)
+                with open(self.ready_pipe_path, 'r') as pipe:
+                    # Read from the pipe (blocks until data is available)
+                    message = pipe.readline().strip()
+                    if message == self.ready_message:
+                        print("Received READY signal from audio player")
+                        with self.lock:
+                            self.show_ready_message = True
+                            self.ready_message_time = time.time()
+            except Exception as e:
+                print(f"Error reading from ready pipe: {e}")
+                time.sleep(1)  # Wait before trying to reopen the pipe
+
+    def draw_text(self, canvas, text, x, y, color):
+        """Draw text on the canvas."""
+        # Simple 5x7 font for displaying text
+        font = {
+            'R': [
+                [1, 1, 1, 1, 1],
+                [1, 0, 0, 0, 1],
+                [1, 0, 0, 0, 1],
+                [1, 1, 1, 1, 1],
+                [1, 0, 1, 0, 0],
+                [1, 0, 0, 1, 0],
+                [1, 0, 0, 0, 1]
+            ],
+            'E': [
+                [1, 1, 1, 1, 1],
+                [1, 0, 0, 0, 0],
+                [1, 0, 0, 0, 0],
+                [1, 1, 1, 1, 0],
+                [1, 0, 0, 0, 0],
+                [1, 0, 0, 0, 0],
+                [1, 1, 1, 1, 1]
+            ],
+            'A': [
+                [0, 0, 1, 0, 0],
+                [0, 1, 0, 1, 0],
+                [1, 0, 0, 0, 1],
+                [1, 1, 1, 1, 1],
+                [1, 0, 0, 0, 1],
+                [1, 0, 0, 0, 1],
+                [1, 0, 0, 0, 1]
+            ],
+            'D': [
+                [1, 1, 1, 1, 0],
+                [1, 0, 0, 0, 1],
+                [1, 0, 0, 0, 1],
+                [1, 0, 0, 0, 1],
+                [1, 0, 0, 0, 1],
+                [1, 0, 0, 0, 1],
+                [1, 1, 1, 1, 0]
+            ],
+            'Y': [
+                [1, 0, 0, 0, 1],
+                [1, 0, 0, 0, 1],
+                [0, 1, 0, 1, 0],
+                [0, 0, 1, 0, 0],
+                [0, 0, 1, 0, 0],
+                [0, 0, 1, 0, 0],
+                [0, 0, 1, 0, 0]
+            ]
+        }
+        
+        # Draw each character
+        char_width = 5
+        char_height = 7
+        char_spacing = 1
+        
+        for i, char in enumerate(text):
+            if char in font:
+                char_x = x + i * (char_width + char_spacing)
+                for row in range(char_height):
+                    for col in range(char_width):
+                        if font[char][row][col] == 1:
+                            canvas.SetPixel(char_x + col, y + row, color[0], color[1], color[2])
+
     def run(self):
         # Start the RFID reader in a separate thread
         reader_thread = threading.Thread(target=self.rfid_reader, daemon=True)
         reader_thread.start()
+        
+        # Start the ready reader in a separate thread
+        ready_thread = threading.Thread(target=self.ready_reader, daemon=True)
+        ready_thread.start()
 
         offscreen_canvas = self.matrix.CreateFrameCanvas()
         height = self.matrix.height
@@ -100,6 +195,13 @@ class WaveformAnimation(SampleBase):
             with self.lock:
                 current_scheme = self.color_scheme
                 has_tag_been_scanned = self.tag_scanned
+                show_ready = self.show_ready_message
+                ready_time = self.ready_message_time
+            
+            # Check if ready message should be hidden
+            if show_ready and time.time() - ready_time > self.ready_message_duration:
+                with self.lock:
+                    self.show_ready_message = False
             
             # Print debug message when color scheme changes
             if last_scheme != current_scheme:
@@ -174,6 +276,17 @@ class WaveformAnimation(SampleBase):
                 mid_point = height // 2
                 for x in range(width):
                     offscreen_canvas.SetPixel(x, mid_point, BRIGHTNESS, BRIGHTNESS, BRIGHTNESS)
+            
+            # Draw ready message if needed
+            if show_ready:
+                # Calculate position to center the text
+                text = "READY"
+                text_width = len(text) * 6  # 5 pixels wide + 1 pixel spacing
+                text_x = (width - text_width) // 2
+                text_y = (height - 7) // 2  # 7 pixels high
+                
+                # Draw the text in white
+                self.draw_text(offscreen_canvas, text, text_x, text_y, (255, 255, 255))
             
             # Update the canvas
             offscreen_canvas = self.matrix.SwapOnVSync(offscreen_canvas)

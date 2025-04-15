@@ -58,50 +58,82 @@ class WaveformAnimation(SampleBase):
         try:
             manifest_path = os.path.join(self.sounds_dir, tag_id, "manifest.json")
             print(f"DEBUG: Looking for manifest at: {manifest_path}")
+            
+            # Check if directory exists
+            dir_path = os.path.join(self.sounds_dir, tag_id)
+            if not os.path.exists(dir_path):
+                print(f"DEBUG: Directory does not exist: {dir_path}")
+                return None
+                
+            # Check directory permissions
+            try:
+                print(f"DEBUG: Directory permissions: {oct(os.stat(dir_path).st_mode)[-3:]}")
+                print(f"DEBUG: Directory owner: {os.stat(dir_path).st_uid}")
+            except Exception as e:
+                print(f"DEBUG: Error checking directory permissions: {e}")
+            
             if os.path.exists(manifest_path):
                 print(f"DEBUG: Manifest file exists for tag {tag_id}")
-                with open(manifest_path, 'r') as f:
-                    manifest_content = f.read()
-                    print(f"DEBUG: Raw manifest content: {manifest_content}")
-                    manifest = json.load(f)
-                    if 'color' in manifest:
-                        color = manifest['color']
-                        print(f"DEBUG: Found color in manifest: {color}, type: {type(color)}")
+                
+                # Check file permissions
+                try:
+                    print(f"DEBUG: File permissions: {oct(os.stat(manifest_path).st_mode)[-3:]}")
+                    print(f"DEBUG: File owner: {os.stat(manifest_path).st_uid}")
+                except Exception as e:
+                    print(f"DEBUG: Error checking file permissions: {e}")
+                
+                try:
+                    with open(manifest_path, 'r') as f:
+                        manifest_content = f.read()
+                        print(f"DEBUG: Raw manifest content: {manifest_content}")
+                        manifest = json.load(f)
+                        if 'color' in manifest:
+                            color = manifest['color']
+                            print(f"DEBUG: Found color in manifest: {color}, type: {type(color)}")
+                            
+                            # Ensure color is in the correct format [r, g, b]
+                            if isinstance(color, list) and len(color) == 3:
+                                # Already in the correct format
+                                print(f"DEBUG: Color is in correct format: {color}")
+                                # Ensure all values are integers and within range
+                                r = max(0, min(255, int(color[0])))
+                                g = max(0, min(255, int(color[1])))
+                                b = max(0, min(255, int(color[2])))
+                                print(f"DEBUG: Returning color values: R={r}, G={g}, B={b}")
+                                return [r, g, b]
+                            elif isinstance(color, dict):
+                                # Convert from dict format to list format
+                                if 'r' in color and 'g' in color and 'b' in color:
+                                    return [int(color['r']), int(color['g']), int(color['b'])]
+                                elif 'red' in color and 'green' in color and 'blue' in color:
+                                    return [int(color['red']), int(color['green']), int(color['blue'])]
+                            elif isinstance(color, str):
+                                # Try to parse hex color
+                                if color.startswith('#'):
+                                    # Convert hex to RGB
+                                    hex_color = color.lstrip('#')
+                                    if len(hex_color) == 6:
+                                        r = int(hex_color[0:2], 16)
+                                        g = int(hex_color[2:4], 16)
+                                        b = int(hex_color[4:6], 16)
+                                        return [r, g, b]
                         
-                        # Ensure color is in the correct format [r, g, b]
-                        if isinstance(color, list) and len(color) == 3:
-                            # Already in the correct format
-                            print(f"DEBUG: Color is in correct format: {color}")
-                            # Ensure all values are integers and within range
-                            r = max(0, min(255, int(color[0])))
-                            g = max(0, min(255, int(color[1])))
-                            b = max(0, min(255, int(color[2])))
-                            print(f"DEBUG: Returning color values: R={r}, G={g}, B={b}")
-                            return [r, g, b]
-                        elif isinstance(color, dict):
-                            # Convert from dict format to list format
-                            if 'r' in color and 'g' in color and 'b' in color:
-                                return [int(color['r']), int(color['g']), int(color['b'])]
-                            elif 'red' in color and 'green' in color and 'blue' in color:
-                                return [int(color['red']), int(color['green']), int(color['blue'])]
-                        elif isinstance(color, str):
-                            # Try to parse hex color
-                            if color.startswith('#'):
-                                # Convert hex to RGB
-                                hex_color = color.lstrip('#')
-                                if len(hex_color) == 6:
-                                    r = int(hex_color[0:2], 16)
-                                    g = int(hex_color[2:4], 16)
-                                    b = int(hex_color[4:6], 16)
-                                    return [r, g, b]
-                        
-                        print(f"Color format not recognized: {color}")
-                    else:
-                        print(f"No 'color' key found in manifest for tag {tag_id}")
+                            print(f"Color format not recognized: {color}")
+                        else:
+                            print(f"No 'color' key found in manifest for tag {tag_id}")
+                except PermissionError as e:
+                    print(f"DEBUG: Permission error reading manifest: {e}")
+                except Exception as e:
+                    print(f"DEBUG: Error reading manifest file: {e}")
             else:
-                print(f"Manifest file does not exist for tag {tag_id}")
+                print(f"DEBUG: Manifest file does not exist at: {manifest_path}")
+                # List contents of the directory to see what's there
+                try:
+                    print(f"DEBUG: Directory contents: {os.listdir(dir_path)}")
+                except Exception as e:
+                    print(f"DEBUG: Error listing directory contents: {e}")
         except Exception as e:
-            print(f"Error reading manifest for tag {tag_id}: {e}")
+            print(f"DEBUG: Error in get_color_from_manifest: {e}")
         return None
 
     def rfid_reader(self):

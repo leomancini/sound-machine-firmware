@@ -14,13 +14,14 @@ class WaveformAnimation(SampleBase):
         self.fifo_path = "/tmp/rfid_pipe"
         self.audio_fifo_path = "/tmp/rfid_audio_pipe"
         self.ready_pipe_path = "/tmp/ready_pipe"
+        self.progress_pipe_path = "/tmp/progress_pipe"
         self.ready_message = "READY"
         self.show_ready_message = False
         self.ready_message_time = 0
         self.ready_message_duration = 5  # Show ready message for 5 seconds
         self.show_loading_message = True  # Start with loading message
-        self.loading_dots = 0  # For loading animation
-        self.last_dot_update = 0  # For loading animation timing
+        self.loading_progress = 0  # Progress percentage (0-100)
+        self.loading_message = "Loading sounds..."  # Current loading message
         
         # Create the pipes if they don't exist
         if not os.path.exists(self.fifo_path):
@@ -34,6 +35,10 @@ class WaveformAnimation(SampleBase):
         if not os.path.exists(self.ready_pipe_path):
             os.mkfifo(self.ready_pipe_path)
             os.chmod(self.ready_pipe_path, 0o666)
+            
+        if not os.path.exists(self.progress_pipe_path):
+            os.mkfifo(self.progress_pipe_path)
+            os.chmod(self.progress_pipe_path, 0o666)
             
         # Flag to indicate whether a tag has been scanned
         self.tag_scanned = False
@@ -97,6 +102,29 @@ class WaveformAnimation(SampleBase):
                             self.ready_message_time = time.time()
             except Exception as e:
                 print(f"Error reading from ready pipe: {e}")
+                time.sleep(1)  # Wait before trying to reopen the pipe
+
+    def progress_reader(self):
+        """Thread function to read progress updates from the progress pipe."""
+        print(f"Reading progress updates from pipe: {self.progress_pipe_path}")
+        while True:
+            try:
+                # Open the pipe for reading (blocking operation)
+                with open(self.progress_pipe_path, 'r') as pipe:
+                    # Read from the pipe (blocks until data is available)
+                    data = pipe.readline().strip()
+                    if data:
+                        try:
+                            progress, message = data.split(',', 1)
+                            progress = int(progress)
+                            with self.lock:
+                                self.loading_progress = progress
+                                self.loading_message = message
+                                print(f"Progress update: {progress}% - {message}")
+                        except ValueError:
+                            print(f"Invalid progress data: {data}")
+            except Exception as e:
+                print(f"Error reading from progress pipe: {e}")
                 time.sleep(1)  # Wait before trying to reopen the pipe
 
     def draw_text(self, canvas, text, x, y, color):
@@ -201,6 +229,15 @@ class WaveformAnimation(SampleBase):
                 [0, 0, 0, 0, 0],
                 [0, 0, 1, 0, 0],
                 [0, 0, 1, 0, 0]
+            ],
+            '%': [
+                [1, 0, 0, 0, 1],
+                [1, 0, 0, 1, 0],
+                [0, 0, 0, 1, 0],
+                [0, 0, 1, 0, 0],
+                [0, 1, 0, 0, 0],
+                [0, 1, 0, 0, 1],
+                [1, 0, 0, 0, 1]
             ]
         }
         
@@ -230,6 +267,21 @@ class WaveformAnimation(SampleBase):
                             flipped_y = y + (char_height - 1 - row)
                             canvas.SetPixel(char_x + col, flipped_y, color[0], color[1], color[2])
 
+    def draw_progress_bar(self, canvas, x, y, width, height, progress, color):
+        """Draw a progress bar on the canvas."""
+        # Draw the background (empty bar)
+        for i in range(x, x + width):
+            for j in range(y, y + height):
+                canvas.SetPixel(i, j, 50, 50, 50)  # Dark gray background
+        
+        # Calculate the filled portion width
+        filled_width = int(width * progress / 100)
+        
+        # Draw the filled portion
+        for i in range(x, x + filled_width):
+            for j in range(y, y + height):
+                canvas.SetPixel(i, j, color[0], color[1], color[2])
+
     def run(self):
         # Start the RFID reader in a separate thread
         reader_thread = threading.Thread(target=self.rfid_reader, daemon=True)
@@ -238,6 +290,10 @@ class WaveformAnimation(SampleBase):
         # Start the ready reader in a separate thread
         ready_thread = threading.Thread(target=self.ready_reader, daemon=True)
         ready_thread.start()
+        
+        # Start the progress reader in a separate thread
+        progress_thread = threading.Thread(target=self.progress_reader, daemon=True)
+        progress_thread.start()
 
         offscreen_canvas = self.matrix.CreateFrameCanvas()
         height = self.matrix.height
@@ -269,15 +325,8 @@ class WaveformAnimation(SampleBase):
                 show_ready = self.show_ready_message
                 ready_time = self.ready_message_time
                 show_loading = self.show_loading_message
-                loading_dots = self.loading_dots
-                last_dot_update = self.last_dot_update
-            
-            # Update loading dots animation
-            current_time = time.time()
-            if show_loading and current_time - last_dot_update > 0.5:
-                with self.lock:
-                    self.loading_dots = (self.loading_dots + 1) % 4
-                    self.last_dot_update = current_time
+                loading_progress = self.loading_progress
+                loading_message = self.loading_message
             
             # Check if ready message should be hidden
             if show_ready and time.time() - ready_time > self.ready_message_duration:
@@ -360,14 +409,42 @@ class WaveformAnimation(SampleBase):
             
             # Draw loading message if needed
             if show_loading:
-                # Calculate position to center the text
-                text = "LOADING" + "." * loading_dots
+                # Draw the loading message
+                text = "LOADING"
                 text_width = len(text) * 6  # 5 pixels wide + 1 pixel spacing
                 text_x = (width - text_width) // 2
-                text_y = (height - 7) // 2  # 7 pixels high
+                text_y = (height - 7) // 2 - 10  # Position above the progress bar
                 
                 # Draw the text in white
                 self.draw_text(offscreen_canvas, text, text_x, text_y, (255, 255, 255))
+                
+                # Draw the progress bar
+                bar_width = width - 20  # Leave some margin
+                bar_height = 5
+                bar_x = 10
+                bar_y = (height - 7) // 2 + 5  # Position below the text
+                
+                # Draw the progress bar
+                self.draw_progress_bar(offscreen_canvas, bar_x, bar_y, bar_width, bar_height, 
+                                      loading_progress, (255, 255, 255))
+                
+                # Draw the progress percentage
+                percent_text = f"{loading_progress}%"
+                percent_width = len(percent_text) * 6
+                percent_x = (width - percent_width) // 2
+                percent_y = bar_y + bar_height + 5
+                
+                # Draw the percentage text
+                self.draw_text(offscreen_canvas, percent_text, percent_x, percent_y, (255, 255, 255))
+                
+                # Draw the loading message
+                message_text = loading_message
+                message_width = len(message_text) * 6
+                message_x = (width - message_width) // 2
+                message_y = percent_y + 10
+                
+                # Draw the message text
+                self.draw_text(offscreen_canvas, message_text, message_x, message_y, (255, 255, 255))
             
             # Draw ready message if needed
             if show_ready:

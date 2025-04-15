@@ -16,6 +16,7 @@ FIFO_PATH = "/tmp/rfid_audio_pipe"
 SOUNDS_BASE_DIR = "/home/fcc-005/sound-machine-firmware/sounds"  # Base directory for sounds
 REMOTE_SERVER = "https://labs.noshado.ws/sound-machine-storage"
 READY_PIPE = "/tmp/ready_pipe"  # Pipe for sending ready message to visualizer
+PROGRESS_PIPE = "/tmp/progress_pipe"  # Pipe for sending progress updates to visualizer
 
 # Cache for remote file timestamps
 remote_timestamps = {}
@@ -79,21 +80,42 @@ def get_remote_sounds():
         print(f"Error getting remote sounds list: {e}")
         return []
 
+def send_progress(progress, message):
+    """Send progress update to the visualizer."""
+    try:
+        # Create the progress pipe if it doesn't exist
+        if not os.path.exists(PROGRESS_PIPE):
+            os.mkfifo(PROGRESS_PIPE)
+            os.chmod(PROGRESS_PIPE, 0o666)
+        
+        # Send the progress message
+        with open(PROGRESS_PIPE, 'w') as pipe:
+            pipe.write(f"{progress},{message}\n")
+            pipe.flush()
+        print(f"Progress: {progress}% - {message}")
+    except Exception as e:
+        print(f"Error sending progress update: {e}")
+
 def sync_sounds():
     """Sync local sounds with remote server."""
     global initial_sync_completed
     
     print("Starting sound synchronization...")
+    send_progress(0, "Starting sound synchronization")
     
     # Get list of remote sounds
+    send_progress(5, "Getting list of remote sounds")
     remote_sounds = get_remote_sounds()
     if not remote_sounds:
         print("Warning: Could not get list of remote sounds")
+        send_progress(100, "Error: Could not get list of remote sounds")
         return
     
     print(f"Found {len(remote_sounds)} valid sounds on remote server")
+    send_progress(10, f"Found {len(remote_sounds)} sounds on server")
     
     # Get list of local sounds
+    send_progress(15, "Checking local sounds")
     local_sounds = []
     try:
         for item in os.listdir(SOUNDS_BASE_DIR):
@@ -104,21 +126,35 @@ def sync_sounds():
                     local_sounds.append(item)
     except Exception as e:
         print(f"Error getting local sounds list: {e}")
+        send_progress(100, f"Error: {str(e)}")
         return
     
     print(f"Found {len(local_sounds)} valid sounds in local cache")
+    send_progress(20, f"Found {len(local_sounds)} local sounds")
     
     # Delete sounds that no longer exist on the server
+    send_progress(25, "Checking for deleted sounds")
+    deleted_count = 0
     for tag_id in local_sounds:
         if tag_id not in remote_sounds:
             try:
                 tag_dir = os.path.join(SOUNDS_BASE_DIR, tag_id)
                 print(f"Deleting local sound {tag_id} (no longer on server)")
                 subprocess.run(["rm", "-rf", tag_dir], check=True)
+                deleted_count += 1
             except Exception as e:
                 print(f"Error deleting local sound {tag_id}: {e}")
     
+    if deleted_count > 0:
+        send_progress(30, f"Deleted {deleted_count} old sounds")
+    
     # Download new or changed sounds
+    send_progress(35, "Checking for new or updated sounds")
+    total_sounds = len(remote_sounds)
+    processed_sounds = 0
+    new_sounds = 0
+    updated_sounds = 0
+    
     for tag_id in remote_sounds:
         tag_dir = os.path.join(SOUNDS_BASE_DIR, tag_id)
         manifest_path = os.path.join(tag_dir, "manifest.json")
@@ -130,7 +166,10 @@ def sync_sounds():
         
         if tag_id not in local_sounds:
             print(f"Downloading new sound {tag_id}")
+            send_progress(35 + int(processed_sounds / total_sounds * 50), 
+                         f"Downloading new sound {tag_id}")
             download_sound(tag_id)
+            new_sounds += 1
         else:
             # Check if files have changed using timestamps
             remote_manifest_time = get_remote_timestamp(manifest_url)
@@ -142,6 +181,8 @@ def sync_sounds():
             if (remote_manifest_time != local_manifest_time or 
                 remote_audio_time != local_audio_time):
                 print(f"Sound {tag_id} has changed, updating...")
+                send_progress(35 + int(processed_sounds / total_sounds * 50), 
+                             f"Updating sound {tag_id}")
                 # Remove existing files before downloading new ones
                 try:
                     if os.path.exists(manifest_path):
@@ -151,16 +192,25 @@ def sync_sounds():
                 except Exception as e:
                     print(f"Error removing old files for {tag_id}: {e}")
                 download_sound(tag_id)
+                updated_sounds += 1
+            else:
+                send_progress(35 + int(processed_sounds / total_sounds * 50), 
+                             f"Sound {tag_id} is up to date")
+        
+        processed_sounds += 1
     
     print("Sound synchronization complete")
+    send_progress(85, "Sound synchronization complete")
     
     # Build the audio cache after syncing
+    send_progress(90, "Building audio cache")
     build_audio_cache()
     
     # Mark initial sync as completed
     initial_sync_completed = True
     
     # Signal that the system is ready
+    send_progress(100, "System ready")
     signal_ready()
 
 def download_sound(tag_id):

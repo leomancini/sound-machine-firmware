@@ -46,79 +46,20 @@ class WaveformAnimation(SampleBase):
             os.mkfifo(self.progress_pipe_path)
             os.chmod(self.progress_pipe_path, 0o666)
             
-        # Dictionary to store color information for each tag
-        self.tag_colors = {
-            # Bright, vibrant colors for each tag
-            "0026074760": [255, 255, 255],
-            "0026068654": [0, 0, 255],
-            "0010656212": [255, 0, 0],
-            "0010610890": [0, 0, 255],
-            "0009861448": [0, 0, 255],
-            "0009239271": [0, 0, 255],
-            "0008479619": [0, 0, 255],
-            "0008451145": [0, 0, 255],
-            "0010651274": [0, 0, 255],
-            "0009466586": [0, 0, 255],
-        }
-        
-        # Default color for unknown tags (slightly blue-tinted white)
-        self.default_color = [255, 255, 255]
-        
-        # Current color state (no more transitions)
-        self.current_color = self.default_color.copy()
+        # Single color for all tags (red)
+        self.current_color = [0, 0, 255]
             
-        print("Starting with default color. Waiting for RFID tags...")
-        print("Available tag colors:")
-        for tag_id, color in self.tag_colors.items():
-            print(f"  - Tag {tag_id}: R={color[0]}, G={color[1]}, B={color[2]}")
+        print("Starting with red color. Waiting for RFID tags...")
         
         # Flag to indicate whether a tag has been scanned
         self.tag_scanned = False
-        
-        # Debug: Check which manifest files exist at startup
-        print("\nChecking for manifest files in sounds directory...")
-        if os.path.exists(self.sounds_dir):
-            for tag_id in os.listdir(self.sounds_dir):
-                tag_dir = os.path.join(self.sounds_dir, tag_id)
-                manifest_path = os.path.join(tag_dir, "manifest.json")
-                if os.path.exists(manifest_path):
-                    try:
-                        with open(manifest_path, 'r', encoding='utf-8') as f:
-                            manifest = json.loads(f.read().strip())
-                            color = manifest.get('color', None)
-                            title = manifest.get('title', 'Unknown')
-                            print(f"Found manifest for tag {tag_id}: {title} (Color: {color})")
-                    except Exception as e:
-                        print(f"Error reading manifest for tag {tag_id}: {e}")
-                else:
-                    print(f"No manifest found for tag {tag_id}")
-        else:
-            print(f"Sounds directory not found: {self.sounds_dir}")
-        print("")  # Add a blank line after the manifest check
-        
-        self.custom_color = None  # Store custom color from manifest
-
-    def get_color_from_manifest(self, tag_id):
-        """Get color for the given tag ID."""
-        # Strip any leading/trailing whitespace from tag_id
-        tag_id = tag_id.strip()
-        
-        # Check if we have a color for this tag
-        if tag_id in self.tag_colors:
-            color = self.tag_colors[tag_id]
-            print(f"Using color for tag {tag_id}: {color}")
-            return color
-            
-        # Return default color if tag not found
-        print(f"No color found for tag {tag_id}, using default color")
-        return self.default_color.copy()
 
     def load_all_tag_colors(self):
-        """No longer needed since colors are hard-coded."""
+        """No longer needed since we use a single color."""
         pass
 
     def reload_tag_colors(self):
-        """No longer needed since colors are hard-coded."""
+        """No longer needed since we use a single color."""
         pass
 
     def rfid_reader(self):
@@ -137,16 +78,9 @@ class WaveformAnimation(SampleBase):
                             # Set the tag_scanned flag to true once any tag is read
                             self.tag_scanned = True
                             
-                            # Get color for this tag
-                            new_color = self.get_color_from_manifest(tag_id)
-                            if new_color:
-                                # Set the color immediately
-                                self.current_color = new_color
-                                print(f"DEBUG: Set color to: {self.current_color}")
-                            else:
-                                # Use default color
-                                self.current_color = self.default_color.copy()
-                                print(f"DEBUG: Using default color: {self.current_color}")
+                            # Always use red color
+                            self.current_color = [0, 0, 255]
+                            print(f"DEBUG: Set color to red")
                         
                         # Forward the tag ID to the audio player
                         try:

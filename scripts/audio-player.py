@@ -8,9 +8,11 @@ import requests
 import json
 import threading
 import queue
+import hashlib
 from pathlib import Path
 from datetime import datetime
 import argparse
+from concurrent.futures import ThreadPoolExecutor, as_completed
 
 # Configure paths
 FIFO_PATH = "/tmp/rfid_audio_pipe"
@@ -19,8 +21,9 @@ REMOTE_SERVER = "https://labs.noshado.ws/sound-machine-storage"
 READY_PIPE = "/tmp/ready_pipe"  # Pipe for sending ready message to visualizer
 PROGRESS_PIPE = "/tmp/progress_pipe"  # Pipe for sending progress updates to visualizer
 
-# Cache for remote file timestamps
+# Cache for remote file timestamps and hashes
 remote_timestamps = {}
+remote_hashes = {}
 # Cache for audio file paths
 audio_cache = {}
 # Flag to track if initial sync has been completed
@@ -35,6 +38,8 @@ current_audio_process = None
 periodic_sync_running = True
 # Interval for periodic sync (in seconds)
 PERIODIC_SYNC_INTERVAL = 300  # 5 minutes
+# Maximum number of concurrent downloads
+MAX_CONCURRENT_DOWNLOADS = 5
 
 def get_remote_timestamp(url):
     """Get last-modified timestamp of a remote file."""
@@ -51,6 +56,31 @@ def get_remote_timestamp(url):
     except requests.exceptions.RequestException:
         pass
     return None
+
+def get_remote_hash(url):
+    """Get MD5 hash of a remote file."""
+    if url in remote_hashes:
+        return remote_hashes[url]
+        
+    try:
+        response = requests.get(url)
+        response.raise_for_status()
+        file_hash = hashlib.md5(response.content).hexdigest()
+        remote_hashes[url] = file_hash
+        return file_hash
+    except requests.exceptions.RequestException:
+        pass
+    return None
+
+def get_local_hash(file_path):
+    """Get MD5 hash of a local file."""
+    try:
+        if not os.path.exists(file_path):
+            return None
+        with open(file_path, 'rb') as f:
+            return hashlib.md5(f.read()).hexdigest()
+    except (IOError, FileNotFoundError):
+        return None
 
 def get_local_timestamp(file_path):
     """Get last-modified timestamp of a local file."""
@@ -100,6 +130,107 @@ def send_progress(progress, message):
         print(f"Progress: {progress}% - {message}")
     except Exception as e:
         print(f"Error sending progress update: {e}")
+
+def download_file(url, local_path):
+    """Download a file from URL to local path with atomic write."""
+    try:
+        # Create temporary file path
+        temp_path = f"{local_path}.tmp"
+        
+        # Download to temporary file
+        response = requests.get(url, stream=True)
+        response.raise_for_status()
+        
+        # Get file size for progress tracking
+        total_size = int(response.headers.get('content-length', 0))
+        
+        # Write to temporary file
+        with open(temp_path, 'wb') as f:
+            if total_size == 0:
+                f.write(response.content)
+            else:
+                downloaded = 0
+                for chunk in response.iter_content(chunk_size=8192):
+                    if chunk:
+                        f.write(chunk)
+                        downloaded += len(chunk)
+        
+        # Verify the temp file was created and has content
+        if not os.path.exists(temp_path):
+            raise Exception(f"Failed to create temporary file: {temp_path}")
+        
+        temp_size = os.path.getsize(temp_path)
+        if temp_size == 0:
+            raise Exception(f"Temporary file is empty: {temp_path}")
+        
+        # Atomic rename
+        os.rename(temp_path, local_path)
+        
+        # Verify the file was renamed successfully
+        if not os.path.exists(local_path):
+            raise Exception(f"Failed to rename file: {local_path}")
+        
+        return True
+    except Exception as e:
+        print(f"Error downloading file {url} to {local_path}: {e}")
+        # Clean up temporary file if it exists
+        if os.path.exists(temp_path):
+            try:
+                os.remove(temp_path)
+            except:
+                pass
+        return False
+
+def download_sound_parallel(tag_id):
+    """Download sound files in parallel."""
+    tag_dir = os.path.join(SOUNDS_BASE_DIR, tag_id)
+    os.makedirs(tag_dir, exist_ok=True)
+    
+    manifest_path = os.path.join(tag_dir, "manifest.json")
+    audio_path = os.path.join(tag_dir, "audio.mp3")
+    manifest_url = f"{REMOTE_SERVER}/{tag_id}/manifest.json"
+    audio_url = f"{REMOTE_SERVER}/{tag_id}/audio.mp3"
+    
+    # Check if files need to be updated using hash comparison
+    manifest_needs_update = True
+    audio_needs_update = True
+    
+    # Check manifest
+    if os.path.exists(manifest_path):
+        remote_manifest_hash = get_remote_hash(manifest_url)
+        local_manifest_hash = get_local_hash(manifest_path)
+        if remote_manifest_hash and local_manifest_hash and remote_manifest_hash == local_manifest_hash:
+            manifest_needs_update = False
+    
+    # Check audio
+    if os.path.exists(audio_path):
+        remote_audio_hash = get_remote_hash(audio_url)
+        local_audio_hash = get_local_hash(audio_path)
+        if remote_audio_hash and local_audio_hash and remote_audio_hash == local_audio_hash:
+            audio_needs_update = False
+    
+    # Download files in parallel if needed
+    with ThreadPoolExecutor(max_workers=2) as executor:
+        futures = []
+        
+        if manifest_needs_update:
+            futures.append(executor.submit(download_file, manifest_url, manifest_path))
+        
+        if audio_needs_update:
+            futures.append(executor.submit(download_file, audio_url, audio_path))
+        
+        # Wait for all downloads to complete
+        for future in as_completed(futures):
+            try:
+                future.result()
+            except Exception as e:
+                print(f"Error in parallel download for {tag_id}: {e}")
+    
+    # Verify both files exist
+    if os.path.exists(manifest_path) and os.path.exists(audio_path):
+        return audio_path
+    else:
+        return None
 
 def sync_sounds(force_update=False):
     """Sync local sounds with remote server."""
@@ -162,122 +293,72 @@ def sync_sounds(force_update=False):
     new_sounds = 0
     updated_sounds = 0
     
-    for tag_id in remote_sounds:
-        tag_dir = os.path.join(SOUNDS_BASE_DIR, tag_id)
-        manifest_path = os.path.join(tag_dir, "manifest.json")
-        audio_path = os.path.join(tag_dir, "audio.mp3")
+    # Process sounds in parallel batches
+    with ThreadPoolExecutor(max_workers=MAX_CONCURRENT_DOWNLOADS) as executor:
+        futures = {}
         
-        # Check if files exist and compare timestamps
-        manifest_url = f"{REMOTE_SERVER}/{tag_id}/manifest.json"
-        audio_url = f"{REMOTE_SERVER}/{tag_id}/audio.mp3"
-        
-        if tag_id not in local_sounds:
-            print(f"Downloading new sound {tag_id}")
-            send_progress(35 + int(processed_sounds / total_sounds * 50), 
-                         f"Downloading new sound {tag_id}")
-            download_sound(tag_id)
-            new_sounds += 1
-        else:
-            # Check if files have changed using timestamps
-            remote_manifest_time = get_remote_timestamp(manifest_url)
-            remote_audio_time = get_remote_timestamp(audio_url)
+        for tag_id in remote_sounds:
+            tag_dir = os.path.join(SOUNDS_BASE_DIR, tag_id)
+            manifest_path = os.path.join(tag_dir, "manifest.json")
+            audio_path = os.path.join(tag_dir, "audio.mp3")
             
-            local_manifest_time = get_local_timestamp(manifest_path)
-            local_audio_time = get_local_timestamp(audio_path)
+            # Check if files exist and compare hashes
+            manifest_url = f"{REMOTE_SERVER}/{tag_id}/manifest.json"
+            audio_url = f"{REMOTE_SERVER}/{tag_id}/audio.mp3"
             
-            # Check if files are actually different by comparing content
-            manifest_changed = False
-            audio_changed = False
-            
-            # For manifest, compare the actual content
-            if os.path.exists(manifest_path):
-                try:
-                    # Parse local manifest as JSON
-                    with open(manifest_path, 'r') as f:
-                        local_manifest_content = f.read().strip()
-                        try:
-                            local_manifest_json = json.loads(local_manifest_content)
-                        except json.JSONDecodeError as e:
-                            print(f"Error parsing local manifest JSON for {tag_id}: {e}")
-                            local_manifest_json = None
-                    
-                    # Parse remote manifest as JSON
-                    response = requests.get(manifest_url)
-                    response.raise_for_status()
-                    remote_manifest_content = response.text.strip()
-                    try:
-                        remote_manifest_json = json.loads(remote_manifest_content)
-                    except json.JSONDecodeError as e:
-                        print(f"Error parsing remote manifest JSON for {tag_id}: {e}")
-                        remote_manifest_json = None
-                    
-                    # Compare JSON objects if both were successfully parsed
-                    if local_manifest_json is not None and remote_manifest_json is not None:
-                        # Compare the actual data values
-                        if local_manifest_json != remote_manifest_json:
-                            manifest_changed = True
-                            print(f"Manifest content changed for {tag_id}")
-                            print(f"  Local: {json.dumps(local_manifest_json)}")
-                            print(f"  Remote: {json.dumps(remote_manifest_json)}")
-                        else:
-                            print(f"Manifest content is identical for {tag_id}")
-                    else:
-                        # If JSON parsing failed, fall back to string comparison
-                        if local_manifest_content != remote_manifest_content:
-                            manifest_changed = True
-                            print(f"Manifest content changed for {tag_id} (string comparison)")
-                            print(f"  Local: {local_manifest_content}")
-                            print(f"  Remote: {remote_manifest_content}")
-                except Exception as e:
-                    print(f"Error comparing manifest content for {tag_id}: {e}")
-                    # If we can't compare content, fall back to timestamp comparison
-                    manifest_changed = (remote_manifest_time != local_manifest_time)
-            else:
-                manifest_changed = True
-            
-            # For audio, compare file sizes as a quick check
-            if os.path.exists(audio_path):
-                try:
-                    local_audio_size = os.path.getsize(audio_path)
-                    response = requests.head(audio_url)
-                    response.raise_for_status()
-                    remote_audio_size = int(response.headers.get('content-length', 0))
-                    
-                    if local_audio_size != remote_audio_size:
-                        audio_changed = True
-                        print(f"Audio file size changed for {tag_id}: local={local_audio_size}, remote={remote_audio_size}")
-                except Exception as e:
-                    print(f"Error comparing audio size for {tag_id}: {e}")
-                    # If we can't compare size, fall back to timestamp comparison
-                    audio_changed = (remote_audio_time != local_audio_time)
-            else:
-                audio_changed = True
-            
-            # If force update is enabled, always update
-            if force_update:
-                manifest_changed = True
-                audio_changed = True
-                print(f"Force update enabled for {tag_id}")
-            
-            if manifest_changed or audio_changed:
-                print(f"Sound {tag_id} has changed, updating...")
+            if tag_id not in local_sounds:
+                print(f"Downloading new sound {tag_id}")
                 send_progress(35 + int(processed_sounds / total_sounds * 50), 
-                             f"Updating sound {tag_id}")
-                # Remove existing files before downloading new ones
-                try:
-                    if os.path.exists(manifest_path):
-                        os.remove(manifest_path)
-                    if os.path.exists(audio_path):
-                        os.remove(audio_path)
-                except Exception as e:
-                    print(f"Error removing old files for {tag_id}: {e}")
-                download_sound(tag_id)
-                updated_sounds += 1
+                             f"Downloading new sound {tag_id}")
+                futures[executor.submit(download_sound_parallel, tag_id)] = tag_id
+                new_sounds += 1
             else:
-                send_progress(35 + int(processed_sounds / total_sounds * 50), 
-                             f"Sound {tag_id} is up to date")
+                # Check if files have changed using hash comparison
+                manifest_needs_update = True
+                audio_needs_update = True
+                
+                # Check manifest
+                if os.path.exists(manifest_path):
+                    remote_manifest_hash = get_remote_hash(manifest_url)
+                    local_manifest_hash = get_local_hash(manifest_path)
+                    if remote_manifest_hash and local_manifest_hash and remote_manifest_hash == local_manifest_hash:
+                        manifest_needs_update = False
+                
+                # Check audio
+                if os.path.exists(audio_path):
+                    remote_audio_hash = get_remote_hash(audio_url)
+                    local_audio_hash = get_local_hash(audio_path)
+                    if remote_audio_hash and local_audio_hash and remote_audio_hash == local_audio_hash:
+                        audio_needs_update = False
+                
+                # If force update is enabled, always update
+                if force_update:
+                    manifest_needs_update = True
+                    audio_needs_update = True
+                
+                if manifest_needs_update or audio_needs_update:
+                    print(f"Sound {tag_id} has changed, updating...")
+                    send_progress(35 + int(processed_sounds / total_sounds * 50), 
+                                 f"Updating sound {tag_id}")
+                    futures[executor.submit(download_sound_parallel, tag_id)] = tag_id
+                    updated_sounds += 1
+                else:
+                    send_progress(35 + int(processed_sounds / total_sounds * 50), 
+                                 f"Sound {tag_id} is up to date")
+            
+            processed_sounds += 1
         
-        processed_sounds += 1
+        # Wait for all downloads to complete
+        for future in as_completed(futures):
+            tag_id = futures[future]
+            try:
+                result = future.result()
+                if result:
+                    print(f"Successfully updated sound for tag {tag_id}")
+                else:
+                    print(f"Failed to update sound for tag {tag_id}")
+            except Exception as e:
+                print(f"Error updating sound for tag {tag_id}: {e}")
     
     print("Sound synchronization complete")
     send_progress(85, "Sound synchronization complete")
@@ -292,134 +373,6 @@ def sync_sounds(force_update=False):
     # Signal that the system is ready
     send_progress(100, "System ready")
     signal_ready()
-
-def download_sound(tag_id):
-    """Download sound from remote server if not already cached locally."""
-    # Create directory for this tag if it doesn't exist
-    tag_dir = os.path.join(SOUNDS_BASE_DIR, tag_id)
-    os.makedirs(tag_dir, exist_ok=True)
-    
-    manifest_path = os.path.join(tag_dir, "manifest.json")
-    audio_path = os.path.join(tag_dir, "audio.mp3")
-    manifest_url = f"{REMOTE_SERVER}/{tag_id}/manifest.json"
-    audio_url = f"{REMOTE_SERVER}/{tag_id}/audio.mp3"
-    
-    print(f"Downloading sound for tag {tag_id}")
-    print(f"  - Manifest URL: {manifest_url}")
-    print(f"  - Audio URL: {audio_url}")
-    print(f"  - Local manifest path: {manifest_path}")
-    print(f"  - Local audio path: {audio_path}")
-    
-    # Get remote timestamps
-    remote_manifest_time = get_remote_timestamp(manifest_url)
-    remote_audio_time = get_remote_timestamp(audio_url)
-    
-    print(f"  - Remote manifest timestamp: {remote_manifest_time}")
-    print(f"  - Remote audio timestamp: {remote_audio_time}")
-    
-    # Get local timestamps
-    local_manifest_time = get_local_timestamp(manifest_path)
-    local_audio_time = get_local_timestamp(audio_path)
-    
-    print(f"  - Local manifest timestamp: {local_manifest_time}")
-    print(f"  - Local audio timestamp: {local_audio_time}")
-    
-    # Download only changed files
-    try:
-        # Download manifest if changed or doesn't exist
-        if remote_manifest_time != local_manifest_time or not os.path.exists(manifest_path):
-            print(f"  - Updating manifest for {tag_id}")
-            response = requests.get(manifest_url)
-            response.raise_for_status()
-            
-            # Save to temporary file first
-            temp_manifest = f"{manifest_path}.tmp"
-            with open(temp_manifest, 'w') as f:
-                f.write(response.text)
-            
-            # Verify the temp file was created and has content
-            if not os.path.exists(temp_manifest):
-                raise Exception(f"Failed to create temporary manifest file: {temp_manifest}")
-            
-            temp_size = os.path.getsize(temp_manifest)
-            if temp_size == 0:
-                raise Exception(f"Temporary manifest file is empty: {temp_manifest}")
-            
-            print(f"  - Temporary manifest file created: {temp_manifest} ({temp_size} bytes)")
-            
-            # Atomic rename
-            os.rename(temp_manifest, manifest_path)
-            
-            # Verify the file was renamed successfully
-            if not os.path.exists(manifest_path):
-                raise Exception(f"Failed to rename manifest file: {manifest_path}")
-            
-            print(f"  - Manifest file saved: {manifest_path}")
-        else:
-            print(f"  - Manifest file is up to date: {manifest_path}")
-            
-        # Download audio if changed or doesn't exist
-        if remote_audio_time != local_audio_time or not os.path.exists(audio_path):
-            print(f"  - Updating audio for {tag_id}")
-            response = requests.get(audio_url)
-            response.raise_for_status()
-            
-            # Save to temporary file first
-            temp_audio = f"{audio_path}.tmp"
-            with open(temp_audio, 'wb') as f:
-                f.write(response.content)
-            
-            # Verify the temp file was created and has content
-            if not os.path.exists(temp_audio):
-                raise Exception(f"Failed to create temporary audio file: {temp_audio}")
-            
-            temp_size = os.path.getsize(temp_audio)
-            if temp_size == 0:
-                raise Exception(f"Temporary audio file is empty: {temp_audio}")
-            
-            print(f"  - Temporary audio file created: {temp_audio} ({temp_size} bytes)")
-            
-            # Atomic rename
-            os.rename(temp_audio, audio_path)
-            
-            # Verify the file was renamed successfully
-            if not os.path.exists(audio_path):
-                raise Exception(f"Failed to rename audio file: {audio_path}")
-            
-            print(f"  - Audio file saved: {audio_path}")
-        else:
-            print(f"  - Audio file is up to date: {audio_path}")
-            
-        # Final verification that both files exist
-        if not os.path.exists(manifest_path):
-            raise Exception(f"Manifest file does not exist after download: {manifest_path}")
-        
-        if not os.path.exists(audio_path):
-            raise Exception(f"Audio file does not exist after download: {audio_path}")
-        
-        print(f"Successfully updated sound for tag {tag_id}")
-        return audio_path
-        
-    except requests.exceptions.RequestException as e:
-        print(f"Error downloading sound for tag {tag_id}: {e}")
-        # Clean up any temporary files
-        for temp_file in [f"{manifest_path}.tmp", f"{audio_path}.tmp"]:
-            if os.path.exists(temp_file):
-                try:
-                    os.remove(temp_file)
-                except:
-                    pass
-        return None
-    except Exception as e:
-        print(f"Error processing sound for tag {tag_id}: {e}")
-        # Clean up any temporary files
-        for temp_file in [f"{manifest_path}.tmp", f"{audio_path}.tmp"]:
-            if os.path.exists(temp_file):
-                try:
-                    os.remove(temp_file)
-                except:
-                    pass
-        return None
 
 def build_audio_cache():
     """Build a cache of all available audio files."""
@@ -521,7 +474,7 @@ def play_sound(tag_id):
         # If not in cache and initial sync is not completed, download it
         if not initial_sync_completed:
             print(f"Tag {tag_id} not in cache, downloading during initial sync...")
-            audio_path = download_sound(tag_id)
+            audio_path = download_sound_parallel(tag_id)
             if audio_path:
                 # Add to cache for future use
                 audio_cache[tag_id] = audio_path
@@ -588,11 +541,13 @@ def main():
     parser = argparse.ArgumentParser(description='Audio player for sound machine')
     parser.add_argument('--force-update', action='store_true', help='Force update all sounds regardless of timestamps')
     parser.add_argument('--sync-interval', type=int, default=300, help='Interval in seconds for periodic sync (default: 300)')
+    parser.add_argument('--max-downloads', type=int, default=5, help='Maximum number of concurrent downloads (default: 5)')
     args = parser.parse_args()
     
     # Set the sync interval from command line args
-    global PERIODIC_SYNC_INTERVAL
+    global PERIODIC_SYNC_INTERVAL, MAX_CONCURRENT_DOWNLOADS
     PERIODIC_SYNC_INTERVAL = args.sync_interval
+    MAX_CONCURRENT_DOWNLOADS = args.max_downloads
     
     # Set up signal handlers for clean exit
     signal.signal(signal.SIGINT, cleanup)
@@ -607,14 +562,19 @@ def main():
     print(f"Downloading sounds from: {REMOTE_SERVER}/<tag_id>/audio.mp3")
     print(f"Caching sounds in: {SOUNDS_BASE_DIR}")
     print(f"Periodic sync interval: {PERIODIC_SYNC_INTERVAL} seconds")
+    print(f"Maximum concurrent downloads: {MAX_CONCURRENT_DOWNLOADS}")
     
-    # Sync sounds on startup - this will:
-    # 1. Get list of all sounds on the server
-    # 2. Delete local sounds that no longer exist on the server
-    # 3. Download new sounds that don't exist locally
-    # 4. Update sounds that have changed on the server
-    # 5. Build the audio cache
-    sync_sounds(force_update=args.force_update)
+    # Start the audio player thread immediately
+    audio_thread = threading.Thread(target=audio_player_thread, daemon=True)
+    audio_thread.start()
+    
+    # Start the periodic sync thread
+    sync_thread = threading.Thread(target=periodic_sync_thread, daemon=True)
+    sync_thread.start()
+    
+    # Sync sounds on startup in a separate thread to avoid blocking
+    sync_thread = threading.Thread(target=lambda: sync_sounds(force_update=args.force_update), daemon=True)
+    sync_thread.start()
     
     # Print audio device information
     print("\nDetected audio devices:")
@@ -624,14 +584,6 @@ def main():
         print("Could not detect audio devices")
     
     print("\nConfigured to use Card 0: USB Audio device for all playback")
-    
-    # Start the audio player thread
-    audio_thread = threading.Thread(target=audio_player_thread, daemon=True)
-    audio_thread.start()
-    
-    # Start the periodic sync thread
-    sync_thread = threading.Thread(target=periodic_sync_thread, daemon=True)
-    sync_thread.start()
     
     # Main loop - continuously read from the pipe
     while True:

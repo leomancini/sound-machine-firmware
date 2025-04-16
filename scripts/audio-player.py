@@ -4,204 +4,26 @@ import time
 import signal
 import sys
 import subprocess
-import requests
-import json
 import threading
 import queue
-import hashlib
 from pathlib import Path
-from datetime import datetime
 import argparse
-from concurrent.futures import ThreadPoolExecutor, as_completed
 
 # Configure paths
 FIFO_PATH = "/tmp/rfid_audio_pipe"
 SOUNDS_BASE_DIR = "/home/fcc-005/sound-machine-firmware/sounds"  # Base directory for sounds
-REMOTE_SERVER = "https://labs.noshado.ws/sound-machine-storage"
 READY_PIPE = "/tmp/ready_pipe"  # Pipe for sending ready message to visualizer
 
-# Cache for remote file timestamps and hashes
-remote_timestamps = {}
 # Cache for audio file paths
 audio_cache = {}
-# Flag to track if initial sync has been completed
-initial_sync_completed = False
 # Queue for audio playback
 audio_queue = queue.Queue()
 # Flag to control the audio player thread
 running = True
 # Current audio process
 current_audio_process = None
-# Flag to control the periodic sync thread
-periodic_sync_running = True
-# Interval for periodic sync (in seconds)
-PERIODIC_SYNC_INTERVAL = 300  # 5 minutes
-# Maximum number of concurrent downloads
-MAX_CONCURRENT_DOWNLOADS = 5
 # Flag to track if we're stopping for a new tag
 stopping_for_new_tag = False
-
-def download_and_save_file(url, local_path):
-    """Download a file from URL to local path with atomic write."""
-    try:
-        # Create temporary file path
-        temp_path = f"{local_path}.tmp"
-        
-        # Download to temporary file
-        response = requests.get(url, stream=True)
-        response.raise_for_status()
-        
-        # Get file size for progress tracking
-        total_size = int(response.headers.get('content-length', 0))
-        
-        # Write to temporary file
-        with open(temp_path, 'wb') as f:
-            if total_size == 0:
-                f.write(response.content)
-            else:
-                downloaded = 0
-                for chunk in response.iter_content(chunk_size=8192):
-                    if chunk:
-                        f.write(chunk)
-                        downloaded += len(chunk)
-        
-        # Verify the temp file was created and has content
-        if not os.path.exists(temp_path):
-            raise Exception(f"Failed to create temporary file: {temp_path}")
-        
-        temp_size = os.path.getsize(temp_path)
-        if temp_size == 0:
-            raise Exception(f"Temporary file is empty: {temp_path}")
-        
-        # Atomic rename
-        os.rename(temp_path, local_path)
-        
-        # Verify the file was renamed successfully
-        if not os.path.exists(local_path):
-            raise Exception(f"Failed to rename file: {local_path}")
-        
-        return True
-    except Exception as e:
-        print(f"Error downloading file {url} to {local_path}: {e}")
-        # Clean up temporary file if it exists
-        if os.path.exists(temp_path):
-            try:
-                os.remove(temp_path)
-            except:
-                pass
-        return False
-
-def download_sound(tag_id):
-    """Download sound files for a tag."""
-    tag_dir = os.path.join(SOUNDS_BASE_DIR, tag_id)
-    os.makedirs(tag_dir, exist_ok=True)
-    
-    manifest_path = os.path.join(tag_dir, "manifest.json")
-    audio_path = os.path.join(tag_dir, "audio.mp3")
-    manifest_url = f"{REMOTE_SERVER}/{tag_id}/manifest.json"
-    audio_url = f"{REMOTE_SERVER}/{tag_id}/audio.mp3"
-    
-    # Check if files need to be updated
-    manifest_needs_update = not os.path.exists(manifest_path)
-    audio_needs_update = not os.path.exists(audio_path)
-    
-    # Download files if needed
-    manifest_success = True
-    audio_success = True
-    
-    if manifest_needs_update:
-        manifest_success = download_and_save_file(manifest_url, manifest_path)
-    
-    if audio_needs_update:
-        audio_success = download_and_save_file(audio_url, audio_path)
-    
-    # Verify both files exist
-    if os.path.exists(manifest_path) and os.path.exists(audio_path):
-        return audio_path
-    else:
-        return None
-
-def sync_sounds(force_update=False, is_initial_sync=False):
-    """Sync local sounds with remote server."""
-    global initial_sync_completed
-    
-    print("Starting sound synchronization...")
-    if force_update:
-        print("FORCE UPDATE MODE: Will update all sounds regardless of timestamps")
-    
-    # Get list of local sounds
-    local_sounds = []
-    try:
-        for item in os.listdir(SOUNDS_BASE_DIR):
-            if os.path.isdir(os.path.join(SOUNDS_BASE_DIR, item)) and item.isdigit():
-                # Only include directories that have both required files
-                if (os.path.exists(os.path.join(SOUNDS_BASE_DIR, item, "manifest.json")) and 
-                    os.path.exists(os.path.join(SOUNDS_BASE_DIR, item, "audio.mp3"))):
-                    local_sounds.append(item)
-    except Exception as e:
-        print(f"Error getting local sounds list: {e}")
-        return
-    
-    print(f"Found {len(local_sounds)} valid sounds in local cache")
-    
-    # Process sounds in parallel batches
-    with ThreadPoolExecutor(max_workers=MAX_CONCURRENT_DOWNLOADS) as executor:
-        futures = {}
-        
-        for tag_id in local_sounds:
-            tag_dir = os.path.join(SOUNDS_BASE_DIR, tag_id)
-            manifest_path = os.path.join(tag_dir, "manifest.json")
-            audio_path = os.path.join(tag_dir, "audio.mp3")
-            
-            # Check if files exist and compare hashes
-            manifest_url = f"{REMOTE_SERVER}/{tag_id}/manifest.json"
-            audio_url = f"{REMOTE_SERVER}/{tag_id}/audio.mp3"
-            
-            # Check if files have changed using hash comparison
-            manifest_needs_update = True
-            audio_needs_update = True
-            
-            # Check manifest
-            if os.path.exists(manifest_path):
-                manifest_needs_update = False
-            
-            # Check audio
-            if os.path.exists(audio_path):
-                audio_needs_update = False
-            
-            # If force update is enabled, always update
-            if force_update:
-                manifest_needs_update = True
-                audio_needs_update = True
-            
-            if manifest_needs_update or audio_needs_update:
-                print(f"Sound {tag_id} has changed, updating...")
-                futures[executor.submit(download_sound, tag_id)] = tag_id
-            else:
-                print(f"Sound {tag_id} is up to date")
-        
-        # Wait for all downloads to complete
-        for future in as_completed(futures):
-            tag_id = futures[future]
-            try:
-                result = future.result()
-                if result:
-                    print(f"Successfully updated sound for tag {tag_id}")
-                else:
-                    print(f"Failed to update sound for tag {tag_id}")
-            except Exception as e:
-                print(f"Error updating sound for tag {tag_id}: {e}")
-    
-    print("Sound synchronization complete")
-    
-    # Build the audio cache after syncing
-    build_audio_cache()
-    
-    # Mark initial sync as completed
-    initial_sync_completed = True
-    
-    # Signal that the system is ready
-    signal_ready()
 
 def build_audio_cache():
     """Build a cache of all available audio files."""
@@ -333,48 +155,23 @@ def play_sound(tag_id):
         audio_path = audio_cache[tag_id]
         print(f"Using cached audio for tag {tag_id}: {audio_path}")
     else:
-        # By default, don't download sounds that aren't in the cache
+        # Tag not found in cache
         print(f"Tag {tag_id} not found in cache. Skipping.")
-        audio_path = None
+        return
     
-    if not audio_path or not os.path.exists(audio_path):
+    if not os.path.exists(audio_path):
         print(f"Warning: Could not find audio file for tag {tag_id}")
         return
     
     # Add the audio file to the queue for playback
     audio_queue.put(audio_path)
 
-def periodic_sync_thread():
-    """Thread function to periodically sync sounds with the server."""
-    global periodic_sync_running
-    
-    print("Starting periodic sync thread")
-    while periodic_sync_running:
-        try:
-            # Sleep for the specified interval
-            time.sleep(PERIODIC_SYNC_INTERVAL)
-            
-            # Check if we should still be running
-            if not periodic_sync_running:
-                break
-                
-            print("Running periodic sync...")
-            # Run sync without force update and without detailed progress updates
-            sync_sounds(force_update=False, is_initial_sync=False)
-        except Exception as e:
-            print(f"Error in periodic sync thread: {e}")
-            # Sleep for a bit before retrying
-            time.sleep(60)
-    
-    print("Periodic sync thread stopped")
-
 def cleanup(*args):
     """Clean up resources before exiting."""
-    global running, periodic_sync_running, current_audio_process
+    global running, current_audio_process
     
     print("Cleaning up...")
     running = False
-    periodic_sync_running = False
     
     # Stop the current audio process if it's running
     if current_audio_process and current_audio_process.poll() is None:
@@ -390,20 +187,11 @@ def cleanup(*args):
     sys.exit(0)
 
 def main():
-    global running, periodic_sync_running
+    global running
     
     # Parse command line arguments
     parser = argparse.ArgumentParser(description='Audio player for sound machine')
-    parser.add_argument('--force-update', action='store_true', help='Force update all sounds regardless of timestamps')
-    parser.add_argument('--sync-interval', type=int, default=300, help='Interval in seconds for periodic sync (default: 300)')
-    parser.add_argument('--max-downloads', type=int, default=5, help='Maximum number of concurrent downloads (default: 5)')
-    parser.add_argument('--resync', action='store_true', help='Perform a full resync on startup')
     args = parser.parse_args()
-    
-    # Set the sync interval from command line args
-    global PERIODIC_SYNC_INTERVAL, MAX_CONCURRENT_DOWNLOADS
-    PERIODIC_SYNC_INTERVAL = args.sync_interval
-    MAX_CONCURRENT_DOWNLOADS = args.max_downloads
     
     # Set up signal handlers for clean exit
     signal.signal(signal.SIGINT, cleanup)
@@ -415,30 +203,16 @@ def main():
         os.chmod(FIFO_PATH, 0o666)
     
     print(f"Audio Player started. Listening for RFID tags from: {FIFO_PATH}")
-    print(f"Downloading sounds from: {REMOTE_SERVER}/<tag_id>/audio.mp3")
-    print(f"Caching sounds in: {SOUNDS_BASE_DIR}")
-    print(f"Periodic sync interval: {PERIODIC_SYNC_INTERVAL} seconds")
-    print(f"Maximum concurrent downloads: {MAX_CONCURRENT_DOWNLOADS}")
+    print(f"Using local sounds from: {SOUNDS_BASE_DIR}")
+    
+    # Build the audio cache from existing files
+    build_audio_cache()
+    # Signal that the system is ready
+    signal_ready()
     
     # Start the audio player thread immediately
     audio_thread = threading.Thread(target=audio_player_thread, daemon=True)
     audio_thread.start()
-    
-    # Start the periodic sync thread
-    sync_thread = threading.Thread(target=periodic_sync_thread, daemon=True)
-    sync_thread.start()
-    
-    # Only sync sounds on startup if --resync flag is provided
-    if args.resync:
-        print("Performing full resync on startup...")
-        sync_thread = threading.Thread(target=lambda: sync_sounds(force_update=args.force_update, is_initial_sync=True), daemon=True)
-        sync_thread.start()
-    else:
-        print("Skipping initial sync. Using existing sounds on device.")
-        # Build the audio cache from existing files
-        build_audio_cache()
-        # Signal that the system is ready
-        signal_ready()
     
     # Print audio device information
     print("\nDetected audio devices:")

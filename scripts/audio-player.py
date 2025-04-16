@@ -4,40 +4,25 @@ import time
 import signal
 import sys
 import subprocess
-import requests
-import json
 import threading
 import queue
-import hashlib
 from pathlib import Path
 from datetime import datetime
 import argparse
-from concurrent.futures import ThreadPoolExecutor, as_completed
 
 # Configure paths
 FIFO_PATH = "/tmp/rfid_audio_pipe"
 SOUNDS_BASE_DIR = "/home/fcc-005/sound-machine-firmware/sounds"  # Base directory for sounds
-REMOTE_SERVER = "https://labs.noshado.ws/sound-machine-storage"
 READY_PIPE = "/tmp/ready_pipe"  # Pipe for sending ready message to visualizer
 
-# Cache for remote file timestamps and hashes
-remote_timestamps = {}
 # Cache for audio file paths
 audio_cache = {}
-# Flag to track if initial sync has been completed
-initial_sync_completed = False
 # Queue for audio playback
 audio_queue = queue.Queue()
 # Flag to control the audio player thread
 running = True
 # Current audio process
 current_audio_process = None
-# Flag to control the periodic sync thread
-periodic_sync_running = True
-# Interval for periodic sync (in seconds)
-PERIODIC_SYNC_INTERVAL = 300  # 5 minutes
-# Maximum number of concurrent downloads
-MAX_CONCURRENT_DOWNLOADS = 5
 # Flag to track if we're stopping for a new tag
 stopping_for_new_tag = False
 
@@ -182,37 +167,12 @@ def play_sound(tag_id):
     # Add the audio file to the queue for playback
     audio_queue.put(audio_path)
 
-def periodic_sync_thread():
-    """Thread function to periodically sync sounds with the server."""
-    global periodic_sync_running
-    
-    print("Starting periodic sync thread")
-    while periodic_sync_running:
-        try:
-            # Sleep for the specified interval
-            time.sleep(PERIODIC_SYNC_INTERVAL)
-            
-            # Check if we should still be running
-            if not periodic_sync_running:
-                break
-                
-            print("Running periodic sync...")
-            # Build the audio cache to refresh the list of available sounds
-            build_audio_cache()
-        except Exception as e:
-            print(f"Error in periodic sync thread: {e}")
-            # Sleep for a bit before retrying
-            time.sleep(60)
-    
-    print("Periodic sync thread stopped")
-
 def cleanup(*args):
     """Clean up resources before exiting."""
-    global running, periodic_sync_running, current_audio_process
+    global running, current_audio_process
     
     print("Cleaning up...")
     running = False
-    periodic_sync_running = False
     
     # Stop the current audio process if it's running
     if current_audio_process and current_audio_process.poll() is None:
@@ -228,20 +188,11 @@ def cleanup(*args):
     sys.exit(0)
 
 def main():
-    global running, periodic_sync_running
+    global running
     
     # Parse command line arguments
     parser = argparse.ArgumentParser(description='Audio player for sound machine')
-    parser.add_argument('--force-update', action='store_true', help='Force update all sounds regardless of timestamps')
-    parser.add_argument('--sync-interval', type=int, default=300, help='Interval in seconds for periodic sync (default: 300)')
-    parser.add_argument('--max-downloads', type=int, default=5, help='Maximum number of concurrent downloads (default: 5)')
-    parser.add_argument('--resync', action='store_true', help='Perform a full resync on startup')
     args = parser.parse_args()
-    
-    # Set the sync interval from command line args
-    global PERIODIC_SYNC_INTERVAL, MAX_CONCURRENT_DOWNLOADS
-    PERIODIC_SYNC_INTERVAL = args.sync_interval
-    MAX_CONCURRENT_DOWNLOADS = args.max_downloads
     
     # Set up signal handlers for clean exit
     signal.signal(signal.SIGINT, cleanup)
@@ -253,18 +204,11 @@ def main():
         os.chmod(FIFO_PATH, 0o666)
     
     print(f"Audio Player started. Listening for RFID tags from: {FIFO_PATH}")
-    print(f"Downloading sounds from: {REMOTE_SERVER}/<tag_id>/audio.mp3")
     print(f"Caching sounds in: {SOUNDS_BASE_DIR}")
-    print(f"Periodic sync interval: {PERIODIC_SYNC_INTERVAL} seconds")
-    print(f"Maximum concurrent downloads: {MAX_CONCURRENT_DOWNLOADS}")
     
     # Start the audio player thread immediately
     audio_thread = threading.Thread(target=audio_player_thread, daemon=True)
     audio_thread.start()
-    
-    # Start the periodic sync thread
-    sync_thread = threading.Thread(target=periodic_sync_thread, daemon=True)
-    sync_thread.start()
     
     # Build the audio cache from existing files
     build_audio_cache()

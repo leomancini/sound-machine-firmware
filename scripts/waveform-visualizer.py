@@ -5,6 +5,9 @@ import random
 import threading
 import time
 import os
+import json
+
+SOUNDS_BASE_DIR = "/home/fcc-005/sound-machine-firmware/sounds"  # Base directory for sounds
 
 class WaveformAnimation(SampleBase):
     def __init__(self, *args, **kwargs):
@@ -13,6 +16,15 @@ class WaveformAnimation(SampleBase):
         self.fifo_path = "/tmp/rfid_pipe"
         self.audio_fifo_path = "/tmp/rfid_audio_pipe"
         self.ready_pipe_path = "/tmp/ready_pipe"
+        
+        # Base directory for sounds and waveform data
+        self.sounds_base_dir = SOUNDS_BASE_DIR
+        
+        # Cache for waveform data
+        self.waveform_cache = {}
+        
+        # Build the initial waveform cache
+        self.build_waveform_cache()
 
         # Create the pipes if they don't exist
         if not os.path.exists(self.fifo_path):
@@ -40,6 +52,37 @@ class WaveformAnimation(SampleBase):
 
         # Flag to indicate audio finished naturally
         self.audio_just_finished = False
+
+    def build_waveform_cache(self):
+        """Build a cache of all available waveform.json files."""
+        print("Building waveform cache...")
+        try:
+            for item in os.listdir(self.sounds_base_dir):
+                if os.path.isdir(os.path.join(self.sounds_base_dir, item)) and item.isdigit():
+                    waveform_path = os.path.join(self.sounds_base_dir, item, "waveform.json")
+                    if os.path.exists(waveform_path):
+                        try:
+                            with open(waveform_path, 'r') as f:
+                                waveform_data = json.load(f)
+                                self.waveform_cache[item] = waveform_data
+                                print(f"Cached waveform for tag {item}: {waveform_path}")
+                                # Print a preview of the data structure
+                                print(f"Data preview for tag {item}:")
+                                if isinstance(waveform_data, dict):
+                                    for key in waveform_data:
+                                        print(f"  - {key}: {type(waveform_data[key])} with {len(str(waveform_data[key]))} chars")
+                                elif isinstance(waveform_data, list):
+                                    print(f"  - List with {len(waveform_data)} elements")
+                                    if waveform_data:
+                                        print(f"  - First element type: {type(waveform_data[0])}")
+                                else:
+                                    print(f"  - Unexpected data type: {type(waveform_data)}")
+                        except Exception as e:
+                            print(f"Error loading waveform data for tag {item}: {e}")
+        except Exception as e:
+            print(f"Error building waveform cache: {e}")
+        
+        print(f"Waveform cache built with {len(self.waveform_cache)} entries")
 
     def rfid_reader(self):
         print(f"Reading tags from pipe: {self.fifo_path}")

@@ -24,6 +24,8 @@ class WaveformAnimation(SampleBase):
         self.loading_message = "Loading sounds..."  # Current loading message
         self.initial_loading = True  # Flag to indicate initial loading phase
         self.initial_loading_timeout = 30  # Seconds to show initial loading screen
+        self.initial_loading_progress = 0  # Progress for initial loading phase
+        self.initial_loading_step = 0.5  # Progress increment per second
         
         # Use the same path as the audio player
         self.sounds_dir = "/home/fcc-005/sound-machine-firmware/sounds"
@@ -334,6 +336,14 @@ class WaveformAnimation(SampleBase):
         for i in range(x + width - 1, x + width - 1 - pixels_to_fill, -1):
             for j in range(y, y + height):
                 canvas.SetPixel(i, j, 255, 0, 0)  # Red color
+                
+        # Add a small animation to the progress bar during initial loading
+        if self.initial_loading and progress < 100:
+            # Add a small moving highlight to the progress bar
+            highlight_pos = int((time.time() * 10) % width)
+            if highlight_pos < pixels_to_fill:
+                for j in range(y, y + height):
+                    canvas.SetPixel(x + width - 1 - highlight_pos, j, 255, 100, 100)  # Lighter red for highlight
 
     def run(self):
         # Start the RFID reader in a separate thread
@@ -369,6 +379,7 @@ class WaveformAnimation(SampleBase):
         last_progress_update_time = time.time()  # Initialize to current time
         progress_timeout = 10  # Seconds to wait before assuming no sounds are being updated
         startup_time = time.time()  # Track when we started
+        last_progress_increment_time = time.time()  # Track when we last incremented the progress
         
         while True:
             # Clear the canvas completely
@@ -402,6 +413,27 @@ class WaveformAnimation(SampleBase):
                     # Keep showing loading screen during initial phase
                     with self.lock:
                         self.show_loading_message = True
+                        
+                        # Increment the initial loading progress
+                        if current_time - last_progress_increment_time >= 1.0:  # Update every second
+                            self.initial_loading_progress = min(95, self.initial_loading_progress + self.initial_loading_step)
+                            last_progress_increment_time = current_time
+                            
+                        # Use the simulated progress if no real progress has been received yet
+                        if loading_progress == 0:
+                            loading_progress = self.initial_loading_progress
+                            
+                            # Change the message based on progress percentage
+                            if loading_progress < 20:
+                                loading_message = "Initializing system..."
+                            elif loading_progress < 40:
+                                loading_message = "Loading sound library..."
+                            elif loading_progress < 60:
+                                loading_message = "Preparing audio engine..."
+                            elif loading_progress < 80:
+                                loading_message = "Almost ready..."
+                            else:
+                                loading_message = "Finalizing setup..."
             else:
                 # After initial phase, use normal timeout logic
                 if "Updating sound" in loading_message:
@@ -427,6 +459,13 @@ class WaveformAnimation(SampleBase):
                 
                 # Use the new left-to-right progress bar method
                 self.draw_left_to_right_progress_bar(offscreen_canvas, bar_x, bar_y, bar_width, bar_height, loading_progress)
+                
+                # Display the progress percentage in the center of the screen
+                if self.initial_loading:
+                    progress_text = f"{int(loading_progress)}%"
+                    text_x = width // 2
+                    text_y = height // 2
+                    self.draw_text(offscreen_canvas, progress_text, text_x, text_y, (255, 255, 255))  # White text
             else:
                 # Only draw waveform when not in loading state and not showing READY message
                 if has_tag_been_scanned and not show_ready:

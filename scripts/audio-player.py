@@ -4,6 +4,7 @@ import time
 import signal
 import sys
 import subprocess
+import json
 import threading
 import queue
 from pathlib import Path
@@ -155,12 +156,12 @@ def play_sound(tag_id):
         audio_path = audio_cache[tag_id]
         print(f"Using cached audio for tag {tag_id}: {audio_path}")
     else:
-        # If not in cache, check if the file exists locally
+        # If not in cache, check if it exists locally
         audio_path = os.path.join(SOUNDS_BASE_DIR, tag_id, "audio.mp3")
         if os.path.exists(audio_path):
             # Add to cache for future use
             audio_cache[tag_id] = audio_path
-            print(f"Found audio file for tag {tag_id}: {audio_path}")
+            print(f"Found local audio for tag {tag_id}: {audio_path}")
         else:
             print(f"Warning: Could not find audio file for tag {tag_id}")
             return
@@ -205,7 +206,7 @@ def main():
         os.chmod(FIFO_PATH, 0o666)
     
     print(f"Audio Player started. Listening for RFID tags from: {FIFO_PATH}")
-    print(f"Using sounds from: {SOUNDS_BASE_DIR}")
+    print(f"Using local sounds from: {SOUNDS_BASE_DIR}")
     
     # Start the audio player thread immediately
     audio_thread = threading.Thread(target=audio_player_thread, daemon=True)

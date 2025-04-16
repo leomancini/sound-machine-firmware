@@ -8,7 +8,7 @@ import threading
 import queue
 
 # Configure paths
-FIFO_PATH = "/tmp/rfid_audio_pipe"
+FIFO_PATH = "/tmp/audio_pipe"
 SOUNDS_BASE_DIR = "/home/fcc-005/sound-machine-firmware/sounds"  # Base directory for sounds
 READY_PIPE = "/tmp/ready_pipe"  # Pipe for sending ready message to visualizer
 

@@ -302,7 +302,7 @@ class WaveformAnimation(SampleBase):
         
         # Default values
         mid_point = height // 2
-        max_amplitude = height // 3  # Maximum wave amplitude
+        max_amplitude = height // 2  # Increased from height // 3 to show more amplitude
         
         # Extract frequency bands from waveform data if available
         bands = []
@@ -336,8 +336,12 @@ class WaveformAnimation(SampleBase):
                 x = int(i * band_width)
                 
                 # Scale the amplitude to fit the screen height
+                # Using a non-linear scaling to emphasize spikes
                 # Assuming input values are in the range of 0-15 based on the data we saw
-                scaled_amplitude = int((amplitude / 15.0) * max_amplitude)
+                normalized_amplitude = amplitude / 15.0  # Normalize to 0-1
+                # Apply a power function to emphasize higher values
+                emphasized_amplitude = normalized_amplitude ** 0.7  # Less than 1 to emphasize highs
+                scaled_amplitude = int(emphasized_amplitude * max_amplitude)
                 
                 # Draw a vertical line for this band
                 start_y = mid_point - scaled_amplitude
@@ -347,9 +351,17 @@ class WaveformAnimation(SampleBase):
                 start_y = max(0, min(height - 1, start_y))
                 end_y = max(0, min(height - 1, end_y))
                 
-                # Draw the line
+                # Draw the line with color gradient based on amplitude
                 for y in range(start_y, end_y + 1):
-                    canvas.SetPixel(x, y, 255, 0, 0)  # Red color for the waveform
+                    # Calculate distance from center to determine color intensity
+                    distance_from_center = abs(y - mid_point) / max_amplitude
+                    # Red component increases with amplitude
+                    red = int(255 * (0.5 + 0.5 * distance_from_center))
+                    # Green and blue components decrease with amplitude
+                    green = int(100 * (1 - distance_from_center))
+                    blue = int(50 * (1 - distance_from_center))
+                    
+                    canvas.SetPixel(x, y, red, green, blue)
         else:
             # Fallback to a more dynamic waveform if no bands data
             # Try to extract any useful data from the waveform

@@ -41,96 +41,6 @@ MAX_CONCURRENT_DOWNLOADS = 5
 # Flag to track if we're stopping for a new tag
 stopping_for_new_tag = False
 
-def sync_sounds(force_update=False, is_initial_sync=False):
-    """Sync local sounds with remote server."""
-    global initial_sync_completed
-    
-    print("Starting sound synchronization...")
-    if force_update:
-        print("FORCE UPDATE MODE: Will update all sounds regardless of timestamps")
-    
-    # Get list of local sounds
-    local_sounds = []
-    try:
-        for item in os.listdir(SOUNDS_BASE_DIR):
-            if os.path.isdir(os.path.join(SOUNDS_BASE_DIR, item)) and item.isdigit():
-                # Only include directories that have both required files
-                if (os.path.exists(os.path.join(SOUNDS_BASE_DIR, item, "manifest.json")) and 
-                    os.path.exists(os.path.join(SOUNDS_BASE_DIR, item, "audio.mp3"))):
-                    local_sounds.append(item)
-    except Exception as e:
-        print(f"Error getting local sounds list: {e}")
-        return
-    
-    print(f"Found {len(local_sounds)} valid sounds in local cache")
-    
-    # Process sounds in parallel batches
-    with ThreadPoolExecutor(max_workers=MAX_CONCURRENT_DOWNLOADS) as executor:
-        futures = {}
-        
-        for tag_id in local_sounds:
-            tag_dir = os.path.join(SOUNDS_BASE_DIR, tag_id)
-            manifest_path = os.path.join(tag_dir, "manifest.json")
-            audio_path = os.path.join(tag_dir, "audio.mp3")
-            
-            # Check if files exist and compare hashes
-            manifest_url = f"{REMOTE_SERVER}/{tag_id}/manifest.json"
-            audio_url = f"{REMOTE_SERVER}/{tag_id}/audio.mp3"
-            
-            # Check if files have changed using hash comparison
-            manifest_needs_update = True
-            audio_needs_update = True
-            
-            # Check manifest
-            if os.path.exists(manifest_path):
-                manifest_needs_update = False
-            
-            # Check audio
-            if os.path.exists(audio_path):
-                audio_needs_update = False
-            
-            # If force update is enabled, always update
-            if force_update:
-                manifest_needs_update = True
-                audio_needs_update = True
-            
-            if manifest_needs_update or audio_needs_update:
-                print(f"Sound {tag_id} has changed, updating...")
-                # Download files directly
-                try:
-                    # Download manifest if needed
-                    if manifest_needs_update:
-                        response = requests.get(manifest_url)
-                        response.raise_for_status()
-                        with open(manifest_path, 'wb') as f:
-                            f.write(response.content)
-                        print(f"Downloaded manifest for tag {tag_id}")
-                    
-                    # Download audio if needed
-                    if audio_needs_update:
-                        response = requests.get(audio_url)
-                        response.raise_for_status()
-                        with open(audio_path, 'wb') as f:
-                            f.write(response.content)
-                        print(f"Downloaded audio for tag {tag_id}")
-                    
-                    print(f"Successfully updated sound for tag {tag_id}")
-                except Exception as e:
-                    print(f"Error updating sound for tag {tag_id}: {e}")
-            else:
-                print(f"Sound {tag_id} is up to date")
-    
-    print("Sound synchronization complete")
-    
-    # Build the audio cache after syncing
-    build_audio_cache()
-    
-    # Mark initial sync as completed
-    initial_sync_completed = True
-    
-    # Signal that the system is ready
-    signal_ready()
-
 def build_audio_cache():
     """Build a cache of all available audio files."""
     global audio_cache
@@ -287,8 +197,8 @@ def periodic_sync_thread():
                 break
                 
             print("Running periodic sync...")
-            # Run sync without force update and without detailed progress updates
-            sync_sounds(force_update=False, is_initial_sync=False)
+            # Build the audio cache to refresh the list of available sounds
+            build_audio_cache()
         except Exception as e:
             print(f"Error in periodic sync thread: {e}")
             # Sleep for a bit before retrying
@@ -356,17 +266,10 @@ def main():
     sync_thread = threading.Thread(target=periodic_sync_thread, daemon=True)
     sync_thread.start()
     
-    # Only sync sounds on startup if --resync flag is provided
-    if args.resync:
-        print("Performing full resync on startup...")
-        sync_thread = threading.Thread(target=lambda: sync_sounds(force_update=args.force_update, is_initial_sync=True), daemon=True)
-        sync_thread.start()
-    else:
-        print("Skipping initial sync. Using existing sounds on device.")
-        # Build the audio cache from existing files
-        build_audio_cache()
-        # Signal that the system is ready
-        signal_ready()
+    # Build the audio cache from existing files
+    build_audio_cache()
+    # Signal that the system is ready
+    signal_ready()
     
     # Print audio device information
     print("\nDetected audio devices:")

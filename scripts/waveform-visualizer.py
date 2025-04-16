@@ -26,6 +26,10 @@ class WaveformAnimation(SampleBase):
         # Cache for waveform data
         self.waveform_cache = {}
         
+        # Current active waveform data
+        self.current_waveform_data = None
+        self.current_tag_id = None
+        
         # Build the initial waveform cache
         self.build_waveform_cache()
 
@@ -115,27 +119,15 @@ class WaveformAnimation(SampleBase):
                             # Reset wave points to ensure animation starts fresh
                             print(f"DEBUG: New tag scanned, resetting animation")
                             
-                            # Log the waveform data for the scanned tag
+                            # Prepare the waveform data for the visualizer
                             if tag_id in self.waveform_cache:
-                                print(f"WAVEFORM DATA for tag {tag_id}:")
-                                waveform_data = self.waveform_cache[tag_id]
-                                if isinstance(waveform_data, dict):
-                                    print(f"  Type: Dictionary with {len(waveform_data)} keys")
-                                    for key, value in waveform_data.items():
-                                        if isinstance(value, list):
-                                            print(f"  - {key}: List with {len(value)} elements")
-                                            if value and len(value) > 0:
-                                                print(f"    First element: {value[0]}")
-                                        else:
-                                            print(f"  - {key}: {type(value)}")
-                                elif isinstance(waveform_data, list):
-                                    print(f"  Type: List with {len(waveform_data)} elements")
-                                    if waveform_data and len(waveform_data) > 0:
-                                        print(f"  First element: {waveform_data[0]}")
-                                else:
-                                    print(f"  Type: {type(waveform_data)}")
+                                self.current_waveform_data = self.waveform_cache[tag_id]
+                                self.current_tag_id = tag_id
+                                print(f"Prepared waveform data for tag {tag_id}")
                             else:
-                                print(f"WARNING: No waveform data found for tag {tag_id}")
+                                self.current_waveform_data = None
+                                self.current_tag_id = None
+                                print(f"No waveform data available for tag {tag_id}")
                         
                         # Forward the tag ID to the audio player
                         try:
@@ -264,20 +256,49 @@ class WaveformAnimation(SampleBase):
             
             # Only draw waveform when audio is playing
             if has_tag_been_scanned and audio_playing:
-                # Generate new wave points based on sine waves and some randomness
-                for x in range(width):
-                    # Create a smoother waveform using multiple sine waves
-                    y = height // 2
-                    y += int(wave_height * math.sin(x/7 + time_var) * 0.5)
-                    y += int(wave_height * math.sin(x/4 - time_var*0.7) * 0.3)
-                    y += int(wave_height * math.sin(x/10 + time_var*0.5) * 0.2)
-                    
-                    # Add subtle randomness for more natural soundwave look
-                    y += random.randint(-2, 2)
-                    
-                    # Keep within bounds
-                    y = max(1, min(height-2, y))
-                    wave_points[x] = y
+                # Use the current waveform data if available
+                if self.current_waveform_data is not None:
+                    # Generate new wave points based on the waveform data
+                    for x in range(width):
+                        # Create a smoother waveform using multiple sine waves
+                        y = height // 2
+                        
+                        # If we have waveform data, use it to influence the visualization
+                        if isinstance(self.current_waveform_data, dict):
+                            # Use the waveform data to influence the wave shape
+                            # This is a simplified example - adjust based on your actual data structure
+                            if 'amplitude' in self.current_waveform_data:
+                                wave_height = min(height // 3, self.current_waveform_data['amplitude'])
+                            
+                            # You can add more sophisticated visualization based on your data
+                            # For example, if you have frequency data, use it to adjust the sine wave parameters
+                        
+                        # Base waveform generation
+                        y += int(wave_height * math.sin(x/7 + time_var) * 0.5)
+                        y += int(wave_height * math.sin(x/4 - time_var*0.7) * 0.3)
+                        y += int(wave_height * math.sin(x/10 + time_var*0.5) * 0.2)
+                        
+                        # Add subtle randomness for more natural soundwave look
+                        y += random.randint(-2, 2)
+                        
+                        # Keep within bounds
+                        y = max(1, min(height-2, y))
+                        wave_points[x] = y
+                else:
+                    # Fallback to default waveform if no data is available
+                    for x in range(width):
+                        # Create a smoother waveform using multiple sine waves
+                        y = height // 2
+                        y += int(wave_height * math.sin(x/7 + time_var) * 0.5)
+                        y += int(wave_height * math.sin(x/4 - time_var*0.7) * 0.3)
+                        y += int(wave_height * math.sin(x/10 + time_var*0.5) * 0.2)
+                        
+                        # Add subtle randomness for more natural soundwave look
+                        y += random.randint(-2, 2)
+                        
+                        # Keep within bounds
+                        y = max(1, min(height-2, y))
+                        wave_points[x] = y
                 
                 # Draw the waveform
                 for x in range(width):

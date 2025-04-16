@@ -155,12 +155,15 @@ def play_sound(tag_id):
         audio_path = audio_cache[tag_id]
         print(f"Using cached audio for tag {tag_id}: {audio_path}")
     else:
-        print(f"Tag {tag_id} not found in cache. Skipping.")
-        audio_path = None
-    
-    if not audio_path or not os.path.exists(audio_path):
-        print(f"Warning: Could not find audio file for tag {tag_id}")
-        return
+        # If not in cache, check if the file exists locally
+        audio_path = os.path.join(SOUNDS_BASE_DIR, tag_id, "audio.mp3")
+        if os.path.exists(audio_path):
+            # Add to cache for future use
+            audio_cache[tag_id] = audio_path
+            print(f"Found audio file for tag {tag_id}: {audio_path}")
+        else:
+            print(f"Warning: Could not find audio file for tag {tag_id}")
+            return
     
     # Add the audio file to the queue for playback
     audio_queue.put(audio_path)

@@ -99,6 +99,36 @@ class WaveformAnimation(SampleBase):
                     if tag_id:
                         print(f"DEBUG: Read tag: '{tag_id}'")
                         
+                        # Print the first few lines of the JSON data for this tag
+                        if tag_id in self.waveform_cache:
+                            print(f"Waveform data for tag {tag_id}:")
+                            waveform_data = self.waveform_cache[tag_id]
+                            if isinstance(waveform_data, dict):
+                                # Print first 3 keys and their types
+                                keys = list(waveform_data.keys())
+                                for i, key in enumerate(keys[:3]):
+                                    value = waveform_data[key]
+                                    value_type = type(value).__name__
+                                    if isinstance(value, (list, dict)):
+                                        value_preview = f"{value_type} with {len(value)} elements"
+                                    else:
+                                        value_preview = f"{value_type}: {str(value)[:50]}"
+                                    print(f"  - {key}: {value_preview}")
+                            elif isinstance(waveform_data, list):
+                                # Print first 3 elements
+                                print(f"  - List with {len(waveform_data)} elements")
+                                for i, item in enumerate(waveform_data[:3]):
+                                    item_type = type(item).__name__
+                                    if isinstance(item, (list, dict)):
+                                        item_preview = f"{item_type} with {len(item)} elements"
+                                    else:
+                                        item_preview = f"{item_type}: {str(item)[:50]}"
+                                    print(f"  - Element {i}: {item_preview}")
+                            else:
+                                print(f"  - Unexpected data type: {type(waveform_data)}")
+                        else:
+                            print(f"No waveform data found for tag {tag_id}")
+                        
                         with self.lock:
                             # Set the tag_scanned flag to true once any tag is read
                             self.tag_scanned = True

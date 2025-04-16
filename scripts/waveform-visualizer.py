@@ -55,6 +55,9 @@ class WaveformAnimation(SampleBase):
         
         # Flag to indicate whether a tag has been scanned
         self.tag_scanned = False
+        
+        # Flag to indicate whether audio is currently playing
+        self.audio_playing = False
 
     def load_all_tag_colors(self):
         """No longer needed since we use a single color."""
@@ -79,6 +82,9 @@ class WaveformAnimation(SampleBase):
                         with self.lock:
                             # Set the tag_scanned flag to true once any tag is read
                             self.tag_scanned = True
+                            
+                            # Set audio_playing to true when a new tag is scanned
+                            self.audio_playing = True
                             
                             # Always use red color
                             self.current_color = [255, 0, 0]
@@ -120,8 +126,12 @@ class WaveformAnimation(SampleBase):
                             
                         with self.lock:
                             self.show_loading_message = False  # Hide loading message
-                            self.show_ready_message = True
-                            self.ready_message_time = time.time()
+                            # No longer show ready message
+                            # self.show_ready_message = True
+                            # self.ready_message_time = time.time()
+                            
+                            # Set audio_playing to false when audio is done
+                            self.audio_playing = False
             except Exception as e:
                 print(f"Error reading from ready pipe: {e}")
                 time.sleep(1)  # Wait before trying to reopen the pipe
@@ -390,16 +400,13 @@ class WaveformAnimation(SampleBase):
             # Get the current state (thread-safe)
             with self.lock:
                 has_tag_been_scanned = self.tag_scanned
-                show_ready = self.show_ready_message
-                ready_time = self.ready_message_time
+                # No longer need to check ready message state
+                # show_ready = self.show_ready_message
+                # ready_time = self.ready_message_time
                 show_loading = self.show_loading_message
                 loading_progress = self.loading_progress
                 loading_message = self.loading_message
-            
-            # Check if ready message should be hidden
-            if show_ready and time.time() - ready_time > self.ready_message_duration:
-                with self.lock:
-                    self.show_ready_message = False
+                audio_playing = self.audio_playing
             
             # Check if we're actually updating sounds
             current_time = time.time()
@@ -460,8 +467,8 @@ class WaveformAnimation(SampleBase):
                 # Use the new left-to-right progress bar method
                 self.draw_left_to_right_progress_bar(offscreen_canvas, bar_x, bar_y, bar_width, bar_height, loading_progress)
             else:
-                # Only draw waveform when not in loading state and not showing READY message
-                if has_tag_been_scanned and not show_ready:
+                # Only draw waveform when not in loading state and audio is playing
+                if has_tag_been_scanned and audio_playing:
                     # Generate new wave points based on sine waves and some randomness
                     for x in range(width):
                         # Create a smoother waveform using multiple sine waves
@@ -491,21 +498,11 @@ class WaveformAnimation(SampleBase):
                             # Set the pixel with the current color
                             offscreen_canvas.SetPixel(x, y, red, green, blue)
                 else:
-                    # Before any tag is scanned or when showing READY, just draw a single horizontal gray line
+                    # Before any tag is scanned or when audio is not playing, 
+                    # just draw a single horizontal gray line
                     mid_point = height // 2
                     for x in range(width):
                         offscreen_canvas.SetPixel(x, mid_point, BRIGHTNESS, BRIGHTNESS, BRIGHTNESS)
-            
-            # Draw ready message if needed
-            if show_ready:
-                # Calculate position to center the text
-                text = "READY"
-                text_width = len(text) * 6  # 5 pixels wide + 1 pixel spacing
-                text_x = width // 2  # Center horizontally
-                text_y = 14  # Fixed position for 64x32 matrix
-                
-                # Draw the text in white
-                self.draw_text(offscreen_canvas, text, text_x, text_y, (255, 255, 255))
             
             # Update the canvas
             offscreen_canvas = self.matrix.SwapOnVSync(offscreen_canvas)

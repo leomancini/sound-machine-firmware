@@ -6,7 +6,11 @@ import sys
 import subprocess
 import threading
 import queue
+import hashlib
+from pathlib import Path
+from datetime import datetime
 import argparse
+from concurrent.futures import ThreadPoolExecutor, as_completed
 
 # Configure paths
 FIFO_PATH = "/tmp/rfid_audio_pipe"
@@ -25,6 +29,8 @@ current_audio_process = None
 periodic_sync_running = True
 # Interval for periodic sync (in seconds)
 PERIODIC_SYNC_INTERVAL = 300  # 5 minutes
+# Maximum number of concurrent downloads
+MAX_CONCURRENT_DOWNLOADS = 5
 # Flag to track if we're stopping for a new tag
 stopping_for_new_tag = False
 
@@ -219,12 +225,16 @@ def main():
     
     # Parse command line arguments
     parser = argparse.ArgumentParser(description='Audio player for sound machine')
+    parser.add_argument('--force-update', action='store_true', help='Force update all sounds regardless of timestamps')
     parser.add_argument('--sync-interval', type=int, default=300, help='Interval in seconds for periodic sync (default: 300)')
+    parser.add_argument('--max-downloads', type=int, default=5, help='Maximum number of concurrent downloads (default: 5)')
+    parser.add_argument('--resync', action='store_true', help='Perform a full resync on startup')
     args = parser.parse_args()
     
     # Set the sync interval from command line args
-    global PERIODIC_SYNC_INTERVAL
+    global PERIODIC_SYNC_INTERVAL, MAX_CONCURRENT_DOWNLOADS
     PERIODIC_SYNC_INTERVAL = args.sync_interval
+    MAX_CONCURRENT_DOWNLOADS = args.max_downloads
     
     # Set up signal handlers for clean exit
     signal.signal(signal.SIGINT, cleanup)
@@ -238,6 +248,7 @@ def main():
     print(f"Audio Player started. Listening for RFID tags from: {FIFO_PATH}")
     print(f"Caching sounds in: {SOUNDS_BASE_DIR}")
     print(f"Periodic sync interval: {PERIODIC_SYNC_INTERVAL} seconds")
+    print(f"Maximum concurrent downloads: {MAX_CONCURRENT_DOWNLOADS}")
     
     # Start the audio player thread immediately
     audio_thread = threading.Thread(target=audio_player_thread, daemon=True)

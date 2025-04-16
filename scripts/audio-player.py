@@ -39,6 +39,8 @@ periodic_sync_running = True
 PERIODIC_SYNC_INTERVAL = 300  # 5 minutes
 # Maximum number of concurrent downloads
 MAX_CONCURRENT_DOWNLOADS = 5
+# Flag to track if we're stopping for a new tag
+stopping_for_new_tag = False
 
 def get_remote_timestamp(url):
     """Get last-modified timestamp of a remote file."""
@@ -380,27 +382,15 @@ def signal_ready():
 
 def audio_player_thread():
     """Thread function to handle audio playback."""
-    global current_audio_process
+    global current_audio_process, stopping_for_new_tag
     
     while running:
         try:
-            # Get the next audio file to play (with a timeout)
-            audio_path = audio_queue.get(timeout=0.5)
-            
-            # Kill any currently playing sounds
-            if current_audio_process:
-                try:
-                    current_audio_process.terminate()
-                    current_audio_process.wait(timeout=1)
-                except:
-                    # If termination fails, force kill
-                    try:
-                        current_audio_process.kill()
-                    except:
-                        pass
-                    # Also try to kill any remaining mpg123 processes
-                    subprocess.run(["pkill", "mpg123"], check=False)
-            
+            # Get the next audio file from the queue
+            audio_path = audio_queue.get()
+            if audio_path is None:
+                break
+                
             # Play the sound using mpg123 with USB Audio device (Card 0)
             try:
                 # Use subprocess.Popen instead of os.system for better control
@@ -411,9 +401,10 @@ def audio_player_thread():
                 # Wait for the audio to finish playing
                 current_audio_process.wait()
                 
-                # Signal that the audio is done playing
-                signal_ready()
-                print("Audio finished playing, sent READY signal")
+                # Only signal ready if we're not stopping for a new tag
+                if not stopping_for_new_tag:
+                    signal_ready()
+                    print("Audio finished playing naturally, sent READY signal")
                 
             except Exception as e:
                 print(f"Error playing sound with USB Audio device: {e}")
@@ -426,17 +417,19 @@ def audio_player_thread():
                     # Wait for the audio to finish playing
                     current_audio_process.wait()
                     
-                    # Signal that the audio is done playing
-                    signal_ready()
-                    print("Audio finished playing, sent READY signal")
+                    # Only signal ready if we're not stopping for a new tag
+                    if not stopping_for_new_tag:
+                        signal_ready()
+                        print("Audio finished playing naturally, sent READY signal")
                     
                 except Exception as e2:
                     print(f"Alternative also failed: {e2}")
                     current_audio_process = None
                     
-                    # Signal that the audio is done playing even if it failed
-                    signal_ready()
-                    print("Audio failed to play, sent READY signal anyway")
+                    # Only send READY signal if we completely failed to play any audio and not stopping for new tag
+                    if (not current_audio_process or current_audio_process.poll() is not None) and not stopping_for_new_tag:
+                        signal_ready()
+                        print("Audio failed to play, sent READY signal")
             
             # Mark the task as done
             audio_queue.task_done()
@@ -455,10 +448,11 @@ def play_sound(tag_id):
     print(f"Audio player received tag: {tag_id}")
     
     # Kill any currently playing sounds immediately
-    global current_audio_process
+    global current_audio_process, stopping_for_new_tag
     if current_audio_process:
         try:
             print("Stopping current audio to play new tag")
+            stopping_for_new_tag = True  # Set flag before stopping
             current_audio_process.terminate()
             current_audio_process.wait(timeout=1)
         except:
@@ -470,9 +464,10 @@ def play_sound(tag_id):
             # Also try to kill any remaining mpg123 processes
             subprocess.run(["pkill", "mpg123"], check=False)
         
-        # Signal that the audio is done playing
+        # Send READY signal when stopping for a new tag
         signal_ready()
-        print("Audio stopped, sent READY signal")
+        print("Audio stopped for new tag, sent READY signal")
+        stopping_for_new_tag = False  # Reset flag after sending signal
     
     # Check if the audio is in the cache
     if tag_id in audio_cache:

@@ -4,8 +4,6 @@ import time
 import signal
 import sys
 import subprocess
-import requests
-import json
 import threading
 import queue
 import hashlib

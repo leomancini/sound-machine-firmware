@@ -54,8 +54,8 @@ class WaveformAnimation(SampleBase):
         self.load_all_tag_colors()
         
         # Color transition variables
-        self.current_color = [180, 180, 180]  # Default grey
-        self.target_color = [180, 180, 180]  # Default grey
+        self.current_color = [255, 255, 255]  # Default grey
+        self.target_color = [255, 255, 255]  # Default grey
         self.color_transition_speed = 0.1  # Speed of color transition (0-1)
         self.last_color_change_time = 0
         self.color_change_cooldown = 0.5  # Seconds to wait before allowing another color change
@@ -214,7 +214,7 @@ class WaveformAnimation(SampleBase):
                                     self.last_color_change_time = time.time()
                                 else:
                                     print(f"DEBUG: No manifest found for tag: '{tag_id}', setting to GREY")
-                                    self.target_color = [180, 180, 180]  # Default grey
+                                    self.target_color = [255, 255, 255]  # Default grey
                                     self.last_color_change_time = time.time()
                         
                         # Forward the tag ID to the audio player
@@ -470,7 +470,7 @@ class WaveformAnimation(SampleBase):
             wave_points.append(height // 2)
         
         # Fixed brightness value for all colors
-        BRIGHTNESS = 180  # Value between 0-255, where 255 is maximum brightness
+        BRIGHTNESS = 255  # Value between 0-255, where 255 is maximum brightness
         
         # Debug flag to print color information
         debug_colors = True

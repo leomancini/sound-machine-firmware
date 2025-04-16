@@ -313,8 +313,8 @@ class WaveformAnimation(SampleBase):
                 for row in range(char_height):
                     for col in range(char_width):
                         if font[char][row][col] == 1:
-                            # Draw the pixel
-                            canvas.SetPixel(char_x + col, y + row, color[0], color[1], color[2])
+                            # Draw the pixel - flip horizontally by using (char_width - 1 - col)
+                            canvas.SetPixel(char_x + (char_width - 1 - col), y + row, color[0], color[1], color[2])
 
     def draw_progress_bar(self, canvas, x, y, width, height, progress, color):
         """Draw a progress bar on the canvas."""
@@ -419,16 +419,16 @@ class WaveformAnimation(SampleBase):
                 text = "LOADING"
                 text_width = len(text) * 6  # 5 pixels wide + 1 pixel spacing
                 text_x = width // 2  # Center horizontally
-                text_y = height // 2 - 20  # Position above the progress bar
+                text_y = 8  # Fixed position for 64x32 matrix
                 
                 # Draw the text in white
                 self.draw_text(offscreen_canvas, text, text_x, text_y, (255, 255, 255))
                 
                 # Draw the progress bar
-                bar_width = width - 20  # Leave some margin
-                bar_height = 5
-                bar_x = 10
-                bar_y = height // 2  # Center vertically
+                bar_width = width - 10  # Leave some margin
+                bar_height = 4
+                bar_x = 5
+                bar_y = 16  # Fixed position for 64x32 matrix
                 
                 # Draw the progress bar
                 self.draw_progress_bar(offscreen_canvas, bar_x, bar_y, bar_width, bar_height, 
@@ -438,7 +438,7 @@ class WaveformAnimation(SampleBase):
                 percent_text = f"{loading_progress}%"
                 percent_width = len(percent_text) * 6
                 percent_x = width // 2  # Center horizontally
-                percent_y = bar_y + bar_height + 5
+                percent_y = 22  # Fixed position for 64x32 matrix
                 
                 # Draw the percentage text
                 self.draw_text(offscreen_canvas, percent_text, percent_x, percent_y, (255, 255, 255))
@@ -447,7 +447,7 @@ class WaveformAnimation(SampleBase):
                 message_text = loading_message
                 message_width = len(message_text) * 6
                 message_x = width // 2  # Center horizontally
-                message_y = percent_y + 10
+                message_y = 28  # Fixed position for 64x32 matrix
                 
                 # Draw the message text
                 self.draw_text(offscreen_canvas, message_text, message_x, message_y, (255, 255, 255))
@@ -493,8 +493,8 @@ class WaveformAnimation(SampleBase):
                 # Calculate position to center the text
                 text = "READY"
                 text_width = len(text) * 6  # 5 pixels wide + 1 pixel spacing
-                text_x = (width - text_width) // 2
-                text_y = (height - 7) // 2  # 7 pixels high
+                text_x = width // 2  # Center horizontally
+                text_y = 14  # Fixed position for 64x32 matrix
                 
                 # Draw the text in white
                 self.draw_text(offscreen_canvas, text, text_x, text_y, (255, 255, 255))

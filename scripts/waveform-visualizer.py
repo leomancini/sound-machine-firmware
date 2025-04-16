@@ -198,10 +198,10 @@ class WaveformAnimation(SampleBase):
                         offscreen_canvas.SetPixel(x, y, red, green, blue)
             else:
                 # Before any tag is scanned or when audio is not playing,
-                # just draw a single horizontal gray line
+                # just draw a single horizontal line
                 mid_point = height // 2
                 for x in range(width):
-                    offscreen_canvas.SetPixel(x, mid_point, BRIGHTNESS, BRIGHTNESS, BRIGHTNESS)
+                    offscreen_canvas.SetPixel(x, mid_point, 255, 0, 0)
             
             # Update the canvas
             offscreen_canvas = self.matrix.SwapOnVSync(offscreen_canvas)

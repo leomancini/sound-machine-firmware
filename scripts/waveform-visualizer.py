@@ -330,6 +330,7 @@ class WaveformAnimation(SampleBase):
         filled_width = int(width * progress / 100)
         
         # Draw the filled portion - red (from left to right)
+        # Start from the left edge and move right
         for i in range(x, x + filled_width):
             for j in range(y, y + height):
                 canvas.SetPixel(i, j, 255, 0, 0)  # Red color

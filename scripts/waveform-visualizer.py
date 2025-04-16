@@ -307,7 +307,7 @@ class WaveformAnimation(SampleBase):
         
         # Default values
         mid_point = height // 2
-        max_amplitude = height // 2  # Increased from height // 3 to show more amplitude
+        max_amplitude = height // 2  # Maximum amplitude from center
         
         # Extract frequency bands from waveform data if available
         bands = []
@@ -323,7 +323,6 @@ class WaveformAnimation(SampleBase):
             # If the data is a list of lists, cycle through the frames
             if waveform_data and isinstance(waveform_data[0], list):
                 # Use time_var to cycle through frames at a slower rate
-                # Multiply time_var by 25 instead of 50 to slow down the animation
                 frame_index = int(time_var * 25) % len(waveform_data)
                 bands = waveform_data[frame_index]
             else:
@@ -332,20 +331,16 @@ class WaveformAnimation(SampleBase):
         
         # If we have bands data, use it to create the visualization
         if bands:
-            # Calculate width of each band to fill screen
-            band_width = width / len(bands)
-            
             # Find the maximum amplitude for better scaling
             max_band_value = max(bands) if bands else 15.0
             
+            # Calculate width of each band to fill screen
+            band_width = width / len(bands)
+            
             # Draw each band
             for i, amplitude in enumerate(bands):
-                # Calculate x position for this band
-                x = int(i * band_width)
-                
-                # Scale the amplitude to fit the screen height
-                # Using a non-linear scaling to emphasize spikes
-                normalized_amplitude = amplitude / max_band_value  # Normalize to 0-1
+                # Normalize amplitude to 0-1 range
+                normalized_amplitude = amplitude / max_band_value
                 
                 # Apply a power function to emphasize higher values
                 # Lower power value (0.5) will make spikes more prominent
@@ -355,19 +350,26 @@ class WaveformAnimation(SampleBase):
                 if emphasized_amplitude < 0.1 and emphasized_amplitude > 0:
                     emphasized_amplitude = 0.1
                 
+                # Scale to appropriate display height
                 scaled_amplitude = int(emphasized_amplitude * max_amplitude)
                 
-                # Draw a vertical line for this band
+                # Calculate x position for this band
+                x = int(i * band_width)
+                
+                # Calculate width of the band (ensure minimum of 1 pixel)
+                band_pixel_width = max(1, int(band_width))
+                
+                # Mirror the wave to get the classic soundwave effect
                 start_y = mid_point - scaled_amplitude
                 end_y = mid_point + scaled_amplitude
                 
-                # Ensure we stay within bounds
+                # Keep within bounds
                 start_y = max(0, min(height - 1, start_y))
                 end_y = max(0, min(height - 1, end_y))
                 
-                # Draw the line with color gradient based on amplitude
+                # Draw filled rectangle for this frequency band
                 for y in range(start_y, end_y + 1):
-                    # Calculate distance from center to determine color intensity
+                    # Calculate color based on amplitude and position
                     distance_from_center = abs(y - mid_point) / max_amplitude
                     
                     # Enhanced color scheme to make spikes more visible
@@ -380,7 +382,9 @@ class WaveformAnimation(SampleBase):
                     # Blue component for high frequencies (spikes)
                     blue = int(200 * distance_from_center)
                     
-                    canvas.SetPixel(x, y, red, green, blue)
+                    # Draw a horizontal line for this y-coordinate
+                    for x_pos in range(x, min(x + band_pixel_width, width)):
+                        canvas.SetPixel(x_pos, y, red, green, blue)
         else:
             # Fallback to a more dynamic waveform if no bands data
             # Try to extract any useful data from the waveform

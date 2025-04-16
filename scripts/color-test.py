@@ -59,18 +59,9 @@ class ColorTest(SampleBase):
         self.rect_height = 4
         self.rect_spacing = 1
         
-        # Calculate grid dimensions
-        self.cols = self.matrix.width // (self.rect_width + self.rect_spacing)
-        self.rows = self.matrix.height // (self.rect_height + self.rect_spacing)
-        
-        # Ensure we have enough colors for all rectangles
-        while len(self.colors) < self.cols * self.rows:
-            # Generate random colors if needed
-            self.colors.append((
-                random.randint(0, 255),
-                random.randint(0, 255),
-                random.randint(0, 255)
-            ))
+        # These will be initialized in run()
+        self.cols = None
+        self.rows = None
     
     def draw_rectangle(self, canvas, x, y, width, height, color):
         """Draw a rectangle with the given color."""
@@ -89,6 +80,19 @@ class ColorTest(SampleBase):
         offscreen_canvas = self.matrix.CreateFrameCanvas()
         height = self.matrix.height
         width = self.matrix.width
+        
+        # Initialize grid dimensions now that we have the matrix
+        self.cols = width // (self.rect_width + self.rect_spacing)
+        self.rows = height // (self.rect_height + self.rect_spacing)
+        
+        # Ensure we have enough colors for all rectangles
+        while len(self.colors) < self.cols * self.rows:
+            # Generate random colors if needed
+            self.colors.append((
+                random.randint(0, 255),
+                random.randint(0, 255),
+                random.randint(0, 255)
+            ))
         
         # Animation variables
         time_var = 0

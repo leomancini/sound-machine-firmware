@@ -164,10 +164,6 @@ class WaveformAnimation(SampleBase):
             with self.lock:
                 has_tag_been_scanned = self.tag_scanned
                 audio_playing = self.audio_playing
-                
-                # Debug print to track audio_playing state
-                if not audio_playing and has_tag_been_scanned:
-                    print("DEBUG: Animation loop detected audio_playing is false")
             
             # Get current color values (no transitions)
             red = self.current_color[0]

@@ -17,6 +17,9 @@ class WaveformAnimation(SampleBase):
         self.audio_fifo_path = "/tmp/rfid_audio_pipe"
         self.ready_pipe_path = "/tmp/ready_pipe"
         
+        # Define the ready message
+        self.ready_message = "READY"
+        
         # Base directory for sounds and waveform data
         self.sounds_base_dir = SOUNDS_BASE_DIR
         

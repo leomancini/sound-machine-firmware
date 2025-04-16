@@ -204,7 +204,7 @@ class WaveformAnimation(SampleBase):
             wave_points.append(height // 2)
         
         # Fixed brightness value
-        BRIGHTNESS = 200  # Value between 0-255, where 255 is maximum brightness
+        BRIGHTNESS = 255  # Value between 0-255, where 255 is maximum brightness
         
         # Track if we're actually updating sounds
         updating_sounds = False
@@ -335,6 +335,9 @@ class WaveformAnimation(SampleBase):
             # Calculate width of each band to fill screen
             band_width = width / len(bands)
             
+            # Find the maximum amplitude for better scaling
+            max_band_value = max(bands) if bands else 15.0
+            
             # Draw each band
             for i, amplitude in enumerate(bands):
                 # Calculate x position for this band
@@ -342,10 +345,16 @@ class WaveformAnimation(SampleBase):
                 
                 # Scale the amplitude to fit the screen height
                 # Using a non-linear scaling to emphasize spikes
-                # Assuming input values are in the range of 0-15 based on the data we saw
-                normalized_amplitude = amplitude / 15.0  # Normalize to 0-1
+                normalized_amplitude = amplitude / max_band_value  # Normalize to 0-1
+                
                 # Apply a power function to emphasize higher values
-                emphasized_amplitude = normalized_amplitude ** 0.7  # Less than 1 to emphasize highs
+                # Lower power value (0.5) will make spikes more prominent
+                emphasized_amplitude = normalized_amplitude ** 0.5
+                
+                # Add a minimum threshold to ensure small values are still visible
+                if emphasized_amplitude < 0.1 and emphasized_amplitude > 0:
+                    emphasized_amplitude = 0.1
+                
                 scaled_amplitude = int(emphasized_amplitude * max_amplitude)
                 
                 # Draw a vertical line for this band
@@ -360,11 +369,16 @@ class WaveformAnimation(SampleBase):
                 for y in range(start_y, end_y + 1):
                     # Calculate distance from center to determine color intensity
                     distance_from_center = abs(y - mid_point) / max_amplitude
+                    
+                    # Enhanced color scheme to make spikes more visible
                     # Red component increases with amplitude
-                    red = int(255 * (0.5 + 0.5 * distance_from_center))
-                    # Green and blue components decrease with amplitude
-                    green = int(100 * (1 - distance_from_center))
-                    blue = int(50 * (1 - distance_from_center))
+                    red = int(255 * (0.7 + 0.3 * distance_from_center))
+                    
+                    # Green component for mid-range frequencies
+                    green = int(150 * (1 - distance_from_center * 0.5))
+                    
+                    # Blue component for high frequencies (spikes)
+                    blue = int(200 * distance_from_center)
                     
                     canvas.SetPixel(x, y, red, green, blue)
         else:
@@ -403,7 +417,13 @@ class WaveformAnimation(SampleBase):
                     end_y = mid_point + abs(amplitude)
                     
                     for y_pos in range(start_y, end_y + 1):
-                        canvas.SetPixel(x, y_pos, 255, 0, 0)
+                        # Enhanced color for better visibility of spikes
+                        distance_from_center = abs(y_pos - mid_point) / max_amplitude
+                        red = int(255 * (0.7 + 0.3 * distance_from_center))
+                        green = int(150 * (1 - distance_from_center * 0.5))
+                        blue = int(200 * distance_from_center)
+                        
+                        canvas.SetPixel(x, y_pos, red, green, blue)
             else:
                 # If waveform_data is not a dict, fall back to default visualization
                 for x in range(width):
@@ -424,7 +444,13 @@ class WaveformAnimation(SampleBase):
                     end_y = mid_point + abs(amplitude)
                     
                     for y_pos in range(start_y, end_y + 1):
-                        canvas.SetPixel(x, y_pos, 255, 0, 0)
+                        # Enhanced color for better visibility of spikes
+                        distance_from_center = abs(y_pos - mid_point) / max_amplitude
+                        red = int(255 * (0.7 + 0.3 * distance_from_center))
+                        green = int(150 * (1 - distance_from_center * 0.5))
+                        blue = int(200 * distance_from_center)
+                        
+                        canvas.SetPixel(x, y_pos, red, green, blue)
 
 # Main function
 if __name__ == "__main__":

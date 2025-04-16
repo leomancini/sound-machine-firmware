@@ -467,8 +467,8 @@ class WaveformAnimation(SampleBase):
                 # Use the new left-to-right progress bar method
                 self.draw_left_to_right_progress_bar(offscreen_canvas, bar_x, bar_y, bar_width, bar_height, loading_progress)
             else:
-                # Only draw waveform when not in loading state and audio is playing
-                if has_tag_been_scanned and audio_playing:
+                # Only draw waveform when not in loading state, initial loading is complete, and audio is playing
+                if has_tag_been_scanned and audio_playing and not self.initial_loading:
                     # Generate new wave points based on sine waves and some randomness
                     for x in range(width):
                         # Create a smoother waveform using multiple sine waves
@@ -498,7 +498,7 @@ class WaveformAnimation(SampleBase):
                             # Set the pixel with the current color
                             offscreen_canvas.SetPixel(x, y, red, green, blue)
                 else:
-                    # Before any tag is scanned or when audio is not playing, 
+                    # Before any tag is scanned, when audio is not playing, or during initial loading,
                     # just draw a single horizontal gray line
                     mid_point = height // 2
                     for x in range(width):

@@ -22,7 +22,6 @@ READY_PIPE = "/tmp/ready_pipe"  # Pipe for sending ready message to visualizer
 
 # Cache for remote file timestamps and hashes
 remote_timestamps = {}
-remote_hashes = {}
 # Cache for audio file paths
 audio_cache = {}
 # Flag to track if initial sync has been completed
@@ -41,37 +40,6 @@ PERIODIC_SYNC_INTERVAL = 300  # 5 minutes
 MAX_CONCURRENT_DOWNLOADS = 5
 # Flag to track if we're stopping for a new tag
 stopping_for_new_tag = False
-
-def get_remote_timestamp(url):
-    """Get last-modified timestamp of a remote file."""
-    if url in remote_timestamps:
-        return remote_timestamps[url]
-        
-    try:
-        response = requests.head(url)
-        response.raise_for_status()
-        if 'last-modified' in response.headers:
-            timestamp = response.headers['last-modified']
-            remote_timestamps[url] = timestamp
-            return timestamp
-    except requests.exceptions.RequestException:
-        pass
-    return None
-
-def get_remote_hash(url):
-    """Get MD5 hash of a remote file."""
-    if url in remote_hashes:
-        return remote_hashes[url]
-        
-    try:
-        response = requests.get(url)
-        response.raise_for_status()
-        file_hash = hashlib.md5(response.content).hexdigest()
-        remote_hashes[url] = file_hash
-        return file_hash
-    except requests.exceptions.RequestException:
-        pass
-    return None
 
 def get_local_hash(file_path):
     """Get MD5 hash of a local file."""
@@ -187,17 +155,11 @@ def download_sound_parallel(tag_id):
     
     # Check manifest
     if os.path.exists(manifest_path):
-        remote_manifest_hash = get_remote_hash(manifest_url)
-        local_manifest_hash = get_local_hash(manifest_path)
-        if remote_manifest_hash and local_manifest_hash and remote_manifest_hash == local_manifest_hash:
-            manifest_needs_update = False
+        manifest_needs_update = False
     
     # Check audio
     if os.path.exists(audio_path):
-        remote_audio_hash = get_remote_hash(audio_url)
-        local_audio_hash = get_local_hash(audio_path)
-        if remote_audio_hash and local_audio_hash and remote_audio_hash == local_audio_hash:
-            audio_needs_update = False
+        audio_needs_update = False
     
     # Download files in parallel if needed
     with ThreadPoolExecutor(max_workers=2) as executor:
@@ -295,17 +257,11 @@ def sync_sounds(force_update=False, is_initial_sync=False):
                 
                 # Check manifest
                 if os.path.exists(manifest_path):
-                    remote_manifest_hash = get_remote_hash(manifest_url)
-                    local_manifest_hash = get_local_hash(manifest_path)
-                    if remote_manifest_hash and local_manifest_hash and remote_manifest_hash == local_manifest_hash:
-                        manifest_needs_update = False
+                    manifest_needs_update = False
                 
                 # Check audio
                 if os.path.exists(audio_path):
-                    remote_audio_hash = get_remote_hash(audio_url)
-                    local_audio_hash = get_local_hash(audio_path)
-                    if remote_audio_hash and local_audio_hash and remote_audio_hash == local_audio_hash:
-                        audio_needs_update = False
+                    audio_needs_update = False
                 
                 # If force update is enabled, always update
                 if force_update:

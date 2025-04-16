@@ -279,6 +279,8 @@ class WaveformAnimation(SampleBase):
                             with self.lock:
                                 self.loading_progress = progress
                                 self.loading_message = message
+                                # Always show loading message when we receive a progress update
+                                self.show_loading_message = True
                                 print(f"Progress update: {progress}% - {message}")
                         except ValueError:
                             print(f"Invalid progress data: {data}")
@@ -593,7 +595,7 @@ class WaveformAnimation(SampleBase):
                     offscreen_canvas.SetPixel(x, mid_point, BRIGHTNESS, BRIGHTNESS, BRIGHTNESS)
             
             # Draw loading message if needed
-            if show_loading and updating_sounds:
+            if show_loading:
                 # Draw the loading message
                 text = "LOADING"
                 text_width = len(text) * 6  # 5 pixels wide + 1 pixel spacing

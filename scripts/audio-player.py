@@ -6,9 +6,6 @@ import sys
 import subprocess
 import threading
 import queue
-from datetime import datetime
-import argparse
-from concurrent.futures import ThreadPoolExecutor, as_completed
 
 # Configure paths
 FIFO_PATH = "/tmp/rfid_audio_pipe"

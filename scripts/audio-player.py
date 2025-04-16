@@ -192,15 +192,6 @@ def cleanup(*args):
 def main():
     global running
     
-    # Parse command line arguments
-    parser = argparse.ArgumentParser(description='Audio player for sound machine')
-    parser.add_argument('--force-update', action='store_true', help='Force update all sounds regardless of timestamps')
-    parser.add_argument('--sync-interval', type=int, default=300, help='Interval in seconds for periodic sync (default: 300)')
-    parser.add_argument('--max-downloads', type=int, default=5, help='Maximum number of concurrent downloads (default: 5)')
-    parser.add_argument('--resync', action='store_true', help='Perform a full resync on startup')
-    args = parser.parse_args()
-
-    
     # Set up signal handlers for clean exit
     signal.signal(signal.SIGINT, cleanup)
     signal.signal(signal.SIGTERM, cleanup)

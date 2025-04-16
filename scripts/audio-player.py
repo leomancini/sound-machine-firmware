@@ -27,8 +27,6 @@ running = True
 current_audio_process = None
 # Flag to control the periodic sync thread
 periodic_sync_running = True
-# Interval for periodic sync (in seconds)
-PERIODIC_SYNC_INTERVAL = 300  # 5 minutes
 # Maximum number of concurrent downloads
 MAX_CONCURRENT_DOWNLOADS = 5
 # Flag to track if we're stopping for a new tag
@@ -174,31 +172,7 @@ def play_sound(tag_id):
     
     # Add the audio file to the queue for playback
     audio_queue.put(audio_path)
-
-def periodic_sync_thread():
-    """Thread function to periodically sync sounds with the server."""
-    global periodic_sync_running
     
-    print("Starting periodic sync thread")
-    while periodic_sync_running:
-        try:
-            # Sleep for the specified interval
-            time.sleep(PERIODIC_SYNC_INTERVAL)
-            
-            # Check if we should still be running
-            if not periodic_sync_running:
-                break
-                
-            print("Running periodic sync...")
-            # Build the audio cache to refresh the list of available sounds
-            build_audio_cache()
-        except Exception as e:
-            print(f"Error in periodic sync thread: {e}")
-            # Sleep for a bit before retrying
-            time.sleep(60)
-    
-    print("Periodic sync thread stopped")
-
 def cleanup(*args):
     """Clean up resources before exiting."""
     global running, periodic_sync_running, current_audio_process
@@ -253,10 +227,6 @@ def main():
     # Start the audio player thread immediately
     audio_thread = threading.Thread(target=audio_player_thread, daemon=True)
     audio_thread.start()
-    
-    # Start the periodic sync thread
-    sync_thread = threading.Thread(target=periodic_sync_thread, daemon=True)
-    sync_thread.start()
     
     # Build the audio cache from existing files
     build_audio_cache()

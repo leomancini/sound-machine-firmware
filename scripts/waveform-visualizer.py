@@ -245,6 +245,10 @@ class WaveformAnimation(SampleBase):
         # Track the last tag ID to detect new tags
         last_tag_id = None
         
+        # Track when the audio finished playing
+        audio_finished_time = 0
+        audio_finished = False
+        
         while True:
             # Clear the canvas completely
             offscreen_canvas.Clear()
@@ -260,6 +264,12 @@ class WaveformAnimation(SampleBase):
                 # Read the audio_just_finished flag (don't reset it here)
                 audio_finished_this_cycle = self.audio_just_finished
                 
+                # If audio just finished, record the time
+                if audio_finished_this_cycle:
+                    audio_finished_time = time.time()
+                    audio_finished = True
+                    print(f"DEBUG: Audio finished at {audio_finished_time}")
+                
                 # Reset the new_tag_scanned flag if it was set
                 if new_tag_scanned:
                     self.new_tag_scanned = False
@@ -271,6 +281,9 @@ class WaveformAnimation(SampleBase):
                     # Start the minimum animation duration timer
                     animation_start_time = time.time()
                     animation_running = True
+                    
+                    # Reset audio finished state for new tag
+                    audio_finished = False
                     
                     # Ensure audio_playing is true when a new tag is scanned
                     if not audio_playing:
@@ -287,6 +300,9 @@ class WaveformAnimation(SampleBase):
                     animation_start_time = time.time()
                     animation_running = True
                     
+                    # Reset audio finished state for new tag
+                    audio_finished = False
+                    
                     # Ensure audio_playing is true for the new tag
                     if not audio_playing:
                         print(f"DEBUG: Setting audio_playing to true for new tag ID")
@@ -295,13 +311,30 @@ class WaveformAnimation(SampleBase):
             
             # Check if we should continue animation based on minimum duration
             current_time = time.time()
+            
+            # Determine if we should continue the animation
+            should_continue_animation = False
+            
+            # Continue if we're in the minimum animation duration period
             if animation_running and (current_time - animation_start_time < min_animation_duration):
-                # Force animation to continue for the minimum duration
-                audio_playing = True
+                should_continue_animation = True
                 print(f"DEBUG: Forcing animation to continue for minimum duration")
+            # Continue if audio is still playing
+            elif audio_playing:
+                should_continue_animation = True
+                print(f"DEBUG: Continuing animation because audio is still playing")
+            # Continue if audio just finished and we haven't reached the minimum duration
+            elif audio_finished and (current_time - audio_finished_time < min_animation_duration):
+                should_continue_animation = True
+                print(f"DEBUG: Continuing animation after audio finished for minimum duration")
             else:
-                # Animation has run for the minimum duration, we can stop it
+                # Animation has run for the minimum duration and audio is not playing
                 animation_running = False
+                audio_finished = False
+            
+            # Set audio_playing based on our decision
+            if should_continue_animation:
+                audio_playing = True
             
             # Only increment frame counter when audio is playing
             if audio_playing:

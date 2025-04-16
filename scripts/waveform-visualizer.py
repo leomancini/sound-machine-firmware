@@ -179,7 +179,9 @@ class WaveformAnimation(SampleBase):
             if current_time - last_audio_check_time > audio_check_interval:
                 last_audio_check_time = current_time
                 with self.lock:
-                    if self.tag_scanned and not self.audio_playing:
+                    # Only reset audio_playing to true if a new tag was recently scanned
+                    # and we haven't received a ready signal yet
+                    if self.tag_scanned and not self.audio_playing and self.new_tag_scanned:
                         print("DEBUG: Tag scanned but audio_playing is false, resetting to true")
                         self.audio_playing = True
             
@@ -246,6 +248,10 @@ class WaveformAnimation(SampleBase):
                 mid_point = height // 2
                 for x in range(width):
                     offscreen_canvas.SetPixel(x, mid_point, 255, 0, 0)
+                
+                # Debug print when not drawing waveform
+                if has_tag_been_scanned and not audio_playing:
+                    print(f"DEBUG: Not drawing waveform, audio_playing={audio_playing}, has_tag_been_scanned={has_tag_been_scanned}")
             
             # Update the canvas
             offscreen_canvas = self.matrix.SwapOnVSync(offscreen_canvas)

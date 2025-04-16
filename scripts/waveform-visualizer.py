@@ -275,7 +275,8 @@ class WaveformAnimation(SampleBase):
                     audio_finished_time = time.time()
                     audio_finished = True
                     extended_after_audio_finished = False
-                    force_animation = True
+                    # Don't force animation to continue after audio finishes
+                    force_animation = False
                     print(f"DEBUG: Audio finished at {audio_finished_time}")
                 
                 # Reset the new_tag_scanned flag if it was set
@@ -335,10 +336,7 @@ class WaveformAnimation(SampleBase):
             elif audio_playing:
                 should_continue_animation = True
                 print(f"DEBUG: Continuing animation because audio is still playing")
-            # Continue if we're forcing the animation to continue
-            elif force_animation and (current_time - audio_finished_time < min_animation_duration):
-                should_continue_animation = True
-                print(f"DEBUG: Forcing animation to continue after audio finished")
+            # Remove the force_animation condition to stop animation immediately when audio finishes
             else:
                 # Animation has run for the minimum duration and audio is not playing
                 animation_running = False

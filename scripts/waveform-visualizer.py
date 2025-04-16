@@ -177,6 +177,9 @@ class WaveformAnimation(SampleBase):
 
     def rfid_reader(self):
         print(f"Reading tags from pipe: {self.fifo_path}")
+        last_tag_time = 0
+        tag_cooldown = 10  # Seconds to wait before allowing another reload
+        
         while True:
             try:
                 # Open the pipe for reading (blocking operation)
@@ -185,6 +188,13 @@ class WaveformAnimation(SampleBase):
                     tag_id = fifo.readline().strip()
                     if tag_id:
                         print(f"DEBUG: Read tag: '{tag_id}'")
+                        current_time = time.time()
+                        
+                        # Only reload colors if enough time has passed since the last reload
+                        if current_time - last_tag_time > tag_cooldown:
+                            print("Tag scanned, reloading tag colors...")
+                            self.reload_tag_colors()
+                            last_tag_time = current_time
                         
                         with self.lock:
                             # Set the tag_scanned flag to true once any tag is read
@@ -233,6 +243,9 @@ class WaveformAnimation(SampleBase):
     def ready_reader(self):
         """Thread function to read from the ready pipe."""
         print(f"Reading ready signals from pipe: {self.ready_pipe_path}")
+        last_ready_time = 0
+        ready_cooldown = 5  # Seconds to wait before allowing another reload
+        
         while True:
             try:
                 # Open the pipe for reading (blocking operation)
@@ -241,6 +254,14 @@ class WaveformAnimation(SampleBase):
                     message = pipe.readline().strip()
                     if message == self.ready_message:
                         print("Received READY signal from audio player")
+                        current_time = time.time()
+                        
+                        # Only reload colors if enough time has passed since the last reload
+                        if current_time - last_ready_time > ready_cooldown:
+                            print("System ready, reloading tag colors...")
+                            self.reload_tag_colors()
+                            last_ready_time = current_time
+                            
                         with self.lock:
                             self.show_loading_message = False  # Hide loading message
                             self.show_ready_message = True
@@ -249,9 +270,21 @@ class WaveformAnimation(SampleBase):
                 print(f"Error reading from ready pipe: {e}")
                 time.sleep(1)  # Wait before trying to reopen the pipe
 
+    def reload_tag_colors(self):
+        """Reload color information for all tags after a sync operation."""
+        print("Reloading color information for all tags after sync...")
+        # Clear the existing color cache
+        self.tag_colors = {}
+        # Load all colors again
+        self.load_all_tag_colors()
+        print("Color reload complete")
+
     def progress_reader(self):
         """Thread function to read progress updates from the progress pipe."""
         print(f"Reading progress updates from pipe: {self.progress_pipe_path}")
+        last_sync_complete_time = 0
+        sync_complete_cooldown = 5  # Seconds to wait before allowing another reload
+        
         while True:
             try:
                 # Open the pipe for reading (blocking operation)
@@ -276,6 +309,15 @@ class WaveformAnimation(SampleBase):
                                     if not os.path.exists(sound_dir):
                                         print(f"DEBUG: Skipping progress update for non-existent sound: {tag_id}")
                                         continue
+                            
+                            # Check if this is a sync completion message
+                            current_time = time.time()
+                            if "Sound synchronization complete" in message or "System ready" in message:
+                                # Only reload colors if enough time has passed since the last reload
+                                if current_time - last_sync_complete_time > sync_complete_cooldown:
+                                    print("Sync completed, reloading tag colors...")
+                                    self.reload_tag_colors()
+                                    last_sync_complete_time = current_time
                             
                             with self.lock:
                                 self.loading_progress = progress

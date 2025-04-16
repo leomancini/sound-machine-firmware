@@ -313,7 +313,7 @@ class WaveformAnimation(SampleBase):
         bands = []
 
         # Use time_var to cycle through frames at a slower rate
-        frame_index = int(time_var * 25) % len(waveform_data)
+        frame_index = int(time_var * 5) % len(waveform_data)
         bands = waveform_data[frame_index]
         
         # If we have bands data, use it to create the visualization

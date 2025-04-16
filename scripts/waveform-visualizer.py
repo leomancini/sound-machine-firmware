@@ -426,24 +426,6 @@ class WaveformAnimation(SampleBase):
                 # Draw the progress bar
                 self.draw_progress_bar(offscreen_canvas, bar_x, bar_y, bar_width, bar_height, 
                                       loading_progress, (255, 255, 255))
-                
-                # Draw the progress percentage
-                percent_text = f"{loading_progress}%"
-                percent_width = len(percent_text) * 6
-                percent_x = width // 2  # Center horizontally
-                percent_y = 22  # Fixed position for 64x32 matrix
-                
-                # Draw the percentage text
-                self.draw_text(offscreen_canvas, percent_text, percent_x, percent_y, (255, 255, 255))
-                
-                # Draw the loading message
-                message_text = loading_message
-                message_width = len(message_text) * 6
-                message_x = width // 2  # Center horizontally
-                message_y = 28  # Fixed position for 64x32 matrix
-                
-                # Draw the message text
-                self.draw_text(offscreen_canvas, message_text, message_x, message_y, (255, 255, 255))
             else:
                 # Only draw waveform when not in loading state and not showing READY message
                 if has_tag_been_scanned and not show_ready:

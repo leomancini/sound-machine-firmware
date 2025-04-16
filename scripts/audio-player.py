@@ -6,8 +6,6 @@ import sys
 import subprocess
 import threading
 import queue
-import hashlib
-from pathlib import Path
 from datetime import datetime
 import argparse
 from concurrent.futures import ThreadPoolExecutor, as_completed
@@ -158,8 +156,7 @@ def play_sound(tag_id):
         audio_path = audio_cache[tag_id]
         print(f"Using cached audio for tag {tag_id}: {audio_path}")
     else:
-        # By default, don't download sounds that aren't in the cache
-        print(f"Tag {tag_id} not found in cache. Skipping.")
+        print(f"Tag {tag_id} not found in cache.")
         audio_path = None
     
     if not audio_path or not os.path.exists(audio_path):

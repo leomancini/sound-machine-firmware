@@ -114,6 +114,28 @@ class WaveformAnimation(SampleBase):
                             
                             # Reset wave points to ensure animation starts fresh
                             print(f"DEBUG: New tag scanned, resetting animation")
+                            
+                            # Log the waveform data for the scanned tag
+                            if tag_id in self.waveform_cache:
+                                print(f"WAVEFORM DATA for tag {tag_id}:")
+                                waveform_data = self.waveform_cache[tag_id]
+                                if isinstance(waveform_data, dict):
+                                    print(f"  Type: Dictionary with {len(waveform_data)} keys")
+                                    for key, value in waveform_data.items():
+                                        if isinstance(value, list):
+                                            print(f"  - {key}: List with {len(value)} elements")
+                                            if value and len(value) > 0:
+                                                print(f"    First element: {value[0]}")
+                                        else:
+                                            print(f"  - {key}: {type(value)}")
+                                elif isinstance(waveform_data, list):
+                                    print(f"  Type: List with {len(waveform_data)} elements")
+                                    if waveform_data and len(waveform_data) > 0:
+                                        print(f"  First element: {waveform_data[0]}")
+                                else:
+                                    print(f"  Type: {type(waveform_data)}")
+                            else:
+                                print(f"WARNING: No waveform data found for tag {tag_id}")
                         
                         # Forward the tag ID to the audio player
                         try:

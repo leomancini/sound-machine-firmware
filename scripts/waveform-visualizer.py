@@ -313,8 +313,10 @@ class WaveformAnimation(SampleBase):
                 for row in range(char_height):
                     for col in range(char_width):
                         if font[char][row][col] == 1:
-                            # Draw the pixel - flip horizontally by using (char_width - 1 - col)
-                            canvas.SetPixel(char_x + (char_width - 1 - col), y + row, color[0], color[1], color[2])
+                            # Draw the pixel - flip both horizontally and vertically
+                            # Horizontal flip: (char_width - 1 - col)
+                            # Vertical flip: (char_height - 1 - row)
+                            canvas.SetPixel(char_x + (char_width - 1 - col), y + (char_height - 1 - row), color[0], color[1], color[2])
 
     def draw_progress_bar(self, canvas, x, y, width, height, progress, color):
         """Draw a progress bar on the canvas."""
@@ -415,15 +417,6 @@ class WaveformAnimation(SampleBase):
             
             # Draw loading message if needed
             if show_loading:
-                # Draw the loading message
-                text = "LOADING"
-                text_width = len(text) * 6  # 5 pixels wide + 1 pixel spacing
-                text_x = width // 2  # Center horizontally
-                text_y = 8  # Fixed position for 64x32 matrix
-                
-                # Draw the text in white
-                self.draw_text(offscreen_canvas, text, text_x, text_y, (255, 255, 255))
-                
                 # Draw the progress bar
                 bar_width = width - 10  # Leave some margin
                 bar_height = 4

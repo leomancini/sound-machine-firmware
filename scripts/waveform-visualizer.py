@@ -301,20 +301,20 @@ class WaveformAnimation(SampleBase):
             if char in font:
                 total_width += char_width + char_spacing
         
-        # Adjust starting x position to account for horizontal flip
-        x = x + total_width - char_spacing
+        # Calculate starting x position to center the text
+        start_x = x - total_width // 2
         
+        # Draw each character
         for i, char in enumerate(text):
             if char in font:
-                # Calculate position with horizontal flip
-                char_x = x - i * (char_width + char_spacing)
+                # Calculate position for this character
+                char_x = start_x + i * (char_width + char_spacing)
                 
                 for row in range(char_height):
                     for col in range(char_width):
                         if font[char][row][col] == 1:
-                            # Flip vertically by calculating the flipped y position
-                            flipped_y = y + (char_height - 1 - row)
-                            canvas.SetPixel(char_x + col, flipped_y, color[0], color[1], color[2])
+                            # Draw the pixel
+                            canvas.SetPixel(char_x + col, y + row, color[0], color[1], color[2])
 
     def draw_progress_bar(self, canvas, x, y, width, height, progress, color):
         """Draw a progress bar on the canvas."""
@@ -367,6 +367,7 @@ class WaveformAnimation(SampleBase):
         startup_time = time.time()  # Track when we started
         
         while True:
+            # Clear the canvas completely
             offscreen_canvas.Clear()
             self.usleep(50 * 1000)  # Slightly slower update for smoother animation
             time_var += 0.2
@@ -417,8 +418,8 @@ class WaveformAnimation(SampleBase):
                 # Draw the loading message
                 text = "LOADING"
                 text_width = len(text) * 6  # 5 pixels wide + 1 pixel spacing
-                text_x = (width - text_width) // 2
-                text_y = (height - 7) // 2 - 10  # Position above the progress bar
+                text_x = width // 2  # Center horizontally
+                text_y = height // 2 - 20  # Position above the progress bar
                 
                 # Draw the text in white
                 self.draw_text(offscreen_canvas, text, text_x, text_y, (255, 255, 255))
@@ -427,7 +428,7 @@ class WaveformAnimation(SampleBase):
                 bar_width = width - 20  # Leave some margin
                 bar_height = 5
                 bar_x = 10
-                bar_y = (height - 7) // 2 + 5  # Position below the text
+                bar_y = height // 2  # Center vertically
                 
                 # Draw the progress bar
                 self.draw_progress_bar(offscreen_canvas, bar_x, bar_y, bar_width, bar_height, 
@@ -436,7 +437,7 @@ class WaveformAnimation(SampleBase):
                 # Draw the progress percentage
                 percent_text = f"{loading_progress}%"
                 percent_width = len(percent_text) * 6
-                percent_x = (width - percent_width) // 2
+                percent_x = width // 2  # Center horizontally
                 percent_y = bar_y + bar_height + 5
                 
                 # Draw the percentage text
@@ -445,14 +446,14 @@ class WaveformAnimation(SampleBase):
                 # Draw the loading message
                 message_text = loading_message
                 message_width = len(message_text) * 6
-                message_x = (width - message_width) // 2
+                message_x = width // 2  # Center horizontally
                 message_y = percent_y + 10
                 
                 # Draw the message text
                 self.draw_text(offscreen_canvas, message_text, message_x, message_y, (255, 255, 255))
             else:
-                # Only draw waveform when not in loading state
-                if has_tag_been_scanned:
+                # Only draw waveform when not in loading state and not showing READY message
+                if has_tag_been_scanned and not show_ready:
                     # Generate new wave points based on sine waves and some randomness
                     for x in range(width):
                         # Create a smoother waveform using multiple sine waves
@@ -482,7 +483,7 @@ class WaveformAnimation(SampleBase):
                             # Set the pixel with the current color
                             offscreen_canvas.SetPixel(x, y, red, green, blue)
                 else:
-                    # Before any tag is scanned, just draw a single horizontal gray line
+                    # Before any tag is scanned or when showing READY, just draw a single horizontal gray line
                     mid_point = height // 2
                     for x in range(width):
                         offscreen_canvas.SetPixel(x, mid_point, BRIGHTNESS, BRIGHTNESS, BRIGHTNESS)

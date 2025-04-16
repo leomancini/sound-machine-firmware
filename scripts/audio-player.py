@@ -19,12 +19,8 @@ FIFO_PATH = "/tmp/rfid_audio_pipe"
 SOUNDS_BASE_DIR = "/home/fcc-005/sound-machine-firmware/sounds"  # Base directory for sounds
 READY_PIPE = "/tmp/ready_pipe"  # Pipe for sending ready message to visualizer
 
-# Cache for remote file timestamps and hashes
-remote_timestamps = {}
 # Cache for audio file paths
 audio_cache = {}
-# Flag to track if initial sync has been completed
-initial_sync_completed = False
 # Queue for audio playback
 audio_queue = queue.Queue()
 # Flag to control the audio player thread

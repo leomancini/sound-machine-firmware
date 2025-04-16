@@ -324,35 +324,34 @@ class WaveformAnimation(SampleBase):
                 bands = waveform_data['frequencies']
             elif 'amplitudes' in waveform_data and isinstance(waveform_data['amplitudes'], list):
                 bands = waveform_data['amplitudes']
+        elif isinstance(waveform_data, list):
+            # If the data is a raw array, use it directly as amplitude values
+            bands = waveform_data
         
         # If we have bands data, use it to create the visualization
         if bands:
             # Calculate width of each band to fill screen
             band_width = width / len(bands)
             
-            # Draw frequency bands
+            # Draw each band
             for i, amplitude in enumerate(bands):
-                # Normalize amplitude to 0-1 range (assuming max amplitude of 15.0)
-                # Adjust this value based on your actual data range
-                normalized_amplitude = min(1.0, amplitude / 15.0)
-                
-                # Scale to appropriate display height
-                scaled_amplitude = normalized_amplitude * max_amplitude
-                
                 # Calculate x position for this band
                 x = int(i * band_width)
                 
-                # Mirror the wave to get the classic soundwave effect
-                start_y = int(mid_point - scaled_amplitude)
-                end_y = int(mid_point + scaled_amplitude)
+                # Scale the amplitude to fit the screen height
+                scaled_amplitude = int((amplitude / 255.0) * max_amplitude)  # Assuming input values are 0-255
                 
-                # Keep within bounds with minimal margins
-                start_y = max(1, start_y)
-                end_y = min(height - 2, end_y)
+                # Draw a vertical line for this band
+                start_y = mid_point - scaled_amplitude
+                end_y = mid_point + scaled_amplitude
                 
-                # Draw vertical line for this frequency band
+                # Ensure we stay within bounds
+                start_y = max(0, min(height - 1, start_y))
+                end_y = max(0, min(height - 1, end_y))
+                
+                # Draw the line
                 for y in range(start_y, end_y + 1):
-                    canvas.SetPixel(x, y, 255, 0, 0)
+                    canvas.SetPixel(x, y, 255, 0, 0)  # Red color for the waveform
         else:
             # Fallback to a more dynamic waveform if no bands data
             # Try to extract any useful data from the waveform

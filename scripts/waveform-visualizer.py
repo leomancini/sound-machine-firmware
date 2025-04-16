@@ -123,8 +123,9 @@ class WaveformAnimation(SampleBase):
                             
                         with self.lock:
                             # Set audio_playing to false when audio is done
+                            was_playing = self.audio_playing
                             self.audio_playing = False
-                            print("DEBUG: Audio finished playing, animation should stop")
+                            print(f"DEBUG: Audio finished playing, animation should stop. Was playing: {was_playing}")
                             
                             # Force reset wave points to ensure immediate transition
                             print("DEBUG: Forcing immediate transition to flat line")
@@ -163,11 +164,24 @@ class WaveformAnimation(SampleBase):
         progress_timeout = 10  # Seconds to wait before assuming no sounds are being updated
         startup_time = time.time()  # Track when we started
         
+        # Track the last time we checked the audio_playing flag
+        last_audio_check_time = time.time()
+        audio_check_interval = 1.0  # Check every second
+        
         while True:
             # Clear the canvas completely
             offscreen_canvas.Clear()
             self.usleep(50 * 1000)  # Slightly slower update for smoother animation
             time_var += 0.2
+            
+            # Periodically check if audio_playing is false but should be true
+            current_time = time.time()
+            if current_time - last_audio_check_time > audio_check_interval:
+                last_audio_check_time = current_time
+                with self.lock:
+                    if self.tag_scanned and not self.audio_playing:
+                        print("DEBUG: Tag scanned but audio_playing is false, resetting to true")
+                        self.audio_playing = True
             
             # Get the current state (thread-safe)
             with self.lock:
@@ -178,6 +192,7 @@ class WaveformAnimation(SampleBase):
                 # Reset the new_tag_scanned flag if it was set
                 if new_tag_scanned:
                     self.new_tag_scanned = False
+                    print(f"DEBUG: Animation loop detected new_tag_scanned is true")
             
             # Get current color values (no transitions)
             red = self.current_color[0]
@@ -192,6 +207,7 @@ class WaveformAnimation(SampleBase):
             
             # Only draw waveform when audio is playing
             if has_tag_been_scanned and audio_playing:
+                print(f"DEBUG: Drawing waveform, audio_playing={audio_playing}, has_tag_been_scanned={has_tag_been_scanned}")
                 # Generate new wave points based on sine waves and some randomness
                 for x in range(width):
                     # Create a smoother waveform using multiple sine waves

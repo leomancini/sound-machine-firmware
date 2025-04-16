@@ -320,18 +320,18 @@ class WaveformAnimation(SampleBase):
 
     def draw_progress_bar(self, canvas, x, y, width, height, progress, color):
         """Draw a progress bar on the canvas."""
-        # Draw the background (empty bar)
+        # Draw the background (empty bar) - black
         for i in range(x, x + width):
             for j in range(y, y + height):
-                canvas.SetPixel(i, j, 50, 50, 50)  # Dark gray background
+                canvas.SetPixel(i, j, 0, 0, 0)  # Black background
         
         # Calculate the filled portion width
         filled_width = int(width * progress / 100)
         
-        # Draw the filled portion
+        # Draw the filled portion - red
         for i in range(x, x + filled_width):
             for j in range(y, y + height):
-                canvas.SetPixel(i, j, color[0], color[1], color[2])
+                canvas.SetPixel(i, j, 255, 0, 0)  # Red color
 
     def run(self):
         # Start the RFID reader in a separate thread

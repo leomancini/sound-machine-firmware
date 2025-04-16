@@ -454,6 +454,26 @@ def play_sound(tag_id):
     
     print(f"Audio player received tag: {tag_id}")
     
+    # Kill any currently playing sounds immediately
+    global current_audio_process
+    if current_audio_process:
+        try:
+            print("Stopping current audio to play new tag")
+            current_audio_process.terminate()
+            current_audio_process.wait(timeout=1)
+        except:
+            # If termination fails, force kill
+            try:
+                current_audio_process.kill()
+            except:
+                pass
+            # Also try to kill any remaining mpg123 processes
+            subprocess.run(["pkill", "mpg123"], check=False)
+        
+        # Signal that the audio is done playing
+        signal_ready()
+        print("Audio stopped, sent READY signal")
+    
     # Check if the audio is in the cache
     if tag_id in audio_cache:
         audio_path = audio_cache[tag_id]

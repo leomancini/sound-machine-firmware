@@ -317,7 +317,7 @@ class WaveformAnimation(SampleBase):
         
         # Default values
         mid_point = height // 2
-        max_amplitude = height // 2  # Maximum amplitude from center
+        max_amplitude = height // 3  # Reduced from height // 2 to make waveform less heavy
         
         # Extract frequency bands from waveform data if available
         bands = []
@@ -372,7 +372,12 @@ class WaveformAnimation(SampleBase):
                 x = int(i * band_width)
                 
                 # Calculate width of the band (ensure minimum of 1 pixel)
-                band_pixel_width = max(1, int(band_width))
+                # Reduce the width to make the waveform thinner
+                band_pixel_width = max(1, int(band_width * 0.7))  # Reduced to 70% of original width
+                
+                # Center the band within its allocated space
+                x_offset = int((band_width - band_pixel_width) / 2)
+                x += x_offset
                 
                 # Mirror the wave to get the classic soundwave effect
                 start_y = mid_point - scaled_amplitude
@@ -427,6 +432,7 @@ class WaveformAnimation(SampleBase):
                     start_y = mid_point - abs(amplitude)
                     end_y = mid_point + abs(amplitude)
                     
+                    # Draw a thinner line (1 pixel wide)
                     for y_pos in range(start_y, end_y + 1):
                         # Use only red at full brightness (255, 0, 0)
                         canvas.SetPixel(x, y_pos, 255, 0, 0)
@@ -449,6 +455,7 @@ class WaveformAnimation(SampleBase):
                     start_y = mid_point - abs(amplitude)
                     end_y = mid_point + abs(amplitude)
                     
+                    # Draw a thinner line (1 pixel wide)
                     for y_pos in range(start_y, end_y + 1):
                         # Use only red at full brightness (255, 0, 0)
                         canvas.SetPixel(x, y_pos, 255, 0, 0)

@@ -36,10 +36,7 @@ class WaveformAnimation(SampleBase):
             os.mkfifo(self.ready_pipe_path)
             os.chmod(self.ready_pipe_path, 0o666)
             
-        # Single color for all tags (red)
-        self.current_color = [255, 0, 0]
-            
-        print("Starting with red color. Waiting for RFID tags...")
+        print("Waiting for RFID tags...")
         
         # Flag to indicate whether a tag has been scanned
         self.tag_scanned = False
@@ -52,14 +49,6 @@ class WaveformAnimation(SampleBase):
 
         # Flag to indicate audio finished naturally
         self.audio_just_finished = False
-
-    def load_all_tag_colors(self):
-        """No longer needed since we use a single color."""
-        pass
-
-    def reload_tag_colors(self):
-        """No longer needed since we use a single color."""
-        pass
 
     def rfid_reader(self):
         print(f"Reading tags from pipe: {self.fifo_path}")
@@ -85,11 +74,6 @@ class WaveformAnimation(SampleBase):
 
                             # Reset audio_just_finished flag for new tag
                             self.audio_just_finished = False
-                            
-                            # Always use red color
-                            self.current_color = [255, 0, 0]
-                            print(f"DEBUG: Set color to red")
-                            print(f"DEBUG: New tag scanned, set audio_playing to true")
                             
                             # Reset wave points to ensure animation starts fresh
                             print(f"DEBUG: New tag scanned, resetting animation")
@@ -219,11 +203,6 @@ class WaveformAnimation(SampleBase):
                         self.audio_playing = True
                         audio_playing = True
             
-            # Get current color values (no transitions)
-            red = self.current_color[0]
-            green = self.current_color[1]
-            blue = self.current_color[2]
-            
             # Reset wave points if a new tag was scanned
             if new_tag_scanned:
                 for x in range(width):
@@ -259,15 +238,14 @@ class WaveformAnimation(SampleBase):
                     end_y = mid_point + abs(amplitude)
                     
                     for y in range(start_y, end_y + 1):
-                        # Set the pixel with the current color
-                        offscreen_canvas.SetPixel(x, y, red, green, blue)
+                        offscreen_canvas.SetPixel(x, y, 255, 0, 0)
             else:
                 # Immediately reset wave points to a flat line when audio stops
                 for x in range(width):
                     wave_points[x] = height // 2
                 
                 # Before any tag is scanned or when audio is not playing,
-                # just draw a single horizontal line in red (255, 0, 0)
+                # just draw a single horizontal line
                 mid_point = height // 2
                 for x in range(width):
                     offscreen_canvas.SetPixel(x, mid_point, 255, 0, 0)

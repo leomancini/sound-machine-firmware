@@ -50,6 +50,9 @@ class WaveformAnimation(SampleBase):
         # Flag to indicate when a new tag is scanned
         self.new_tag_scanned = False
 
+        # Flag to indicate audio finished naturally
+        self.audio_just_finished = False
+
     def load_all_tag_colors(self):
         """No longer needed since we use a single color."""
         pass
@@ -79,6 +82,9 @@ class WaveformAnimation(SampleBase):
                             
                             # Set new_tag_scanned flag to true
                             self.new_tag_scanned = True
+
+                            # Reset audio_just_finished flag for new tag
+                            self.audio_just_finished = False
                             
                             # Always use red color
                             self.current_color = [255, 0, 0]
@@ -126,6 +132,7 @@ class WaveformAnimation(SampleBase):
                             # Set audio_playing to false when audio is done
                             was_playing = self.audio_playing
                             self.audio_playing = False
+                            self.audio_just_finished = True # Mark that audio finished naturally
                             # DO NOT Clear the new_tag_scanned flag here
                             # Let the animation loop handle it to ensure proper start
                             # self.new_tag_scanned = False 
@@ -184,9 +191,10 @@ class WaveformAnimation(SampleBase):
                 last_audio_check_time = current_time
                 with self.lock:
                     # If a tag has been scanned but audio is not marked as playing,
-                    # set it back to true. This is a fallback.
-                    if self.tag_scanned and not self.audio_playing:
-                        print("DEBUG (Periodic Check): Tag scanned but audio_playing is false, resetting to true")
+                    # AND audio didn't just finish naturally, set it back to true.
+                    # This is a fallback.
+                    if self.tag_scanned and not self.audio_playing and not self.audio_just_finished:
+                        print("DEBUG (Periodic Check): Fallback triggered - Tag scanned, audio not playing, and audio didn't just finish. Resetting audio_playing=True")
                         self.audio_playing = True
             
             # Get the current state (thread-safe)
@@ -194,6 +202,12 @@ class WaveformAnimation(SampleBase):
                 has_tag_been_scanned = self.tag_scanned
                 audio_playing = self.audio_playing
                 new_tag_scanned = self.new_tag_scanned
+                
+                # Read the audio_just_finished flag
+                audio_finished_this_cycle = self.audio_just_finished
+                # Reset the flag immediately after reading
+                if self.audio_just_finished:
+                    self.audio_just_finished = False
                 
                 # Reset the new_tag_scanned flag if it was set
                 if new_tag_scanned:

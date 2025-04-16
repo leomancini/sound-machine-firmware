@@ -311,23 +311,10 @@ class WaveformAnimation(SampleBase):
         
         # Extract frequency bands from waveform data if available
         bands = []
-        if isinstance(waveform_data, dict):
-            # Try to get frequency bands from the data
-            if 'bands' in waveform_data and isinstance(waveform_data['bands'], list):
-                bands = waveform_data['bands']
-            elif 'frequencies' in waveform_data and isinstance(waveform_data['frequencies'], list):
-                bands = waveform_data['frequencies']
-            elif 'amplitudes' in waveform_data and isinstance(waveform_data['amplitudes'], list):
-                bands = waveform_data['amplitudes']
-        elif isinstance(waveform_data, list):
-            # If the data is a list of lists, cycle through the frames
-            if waveform_data and isinstance(waveform_data[0], list):
-                # Use time_var to cycle through frames at a slower rate
-                frame_index = int(time_var * 25) % len(waveform_data)
-                bands = waveform_data[frame_index]
-            else:
-                # If it's a single list, use it directly
-                bands = waveform_data
+
+        # Use time_var to cycle through frames at a slower rate
+        frame_index = int(time_var * 25) % len(waveform_data)
+        bands = waveform_data[frame_index]
         
         # If we have bands data, use it to create the visualization
         if bands:
@@ -337,18 +324,22 @@ class WaveformAnimation(SampleBase):
             # Calculate width of each band to fill screen
             band_width = width / len(bands)
             
+            # Find the dominant frequency (highest amplitude)
+            dominant_amplitude = max(bands) if bands else 0
+            dominant_indices = [i for i, amp in enumerate(bands) if amp == dominant_amplitude]
+            
             # Draw each band
             for i, amplitude in enumerate(bands):
                 # Normalize amplitude to 0-1 range
                 normalized_amplitude = amplitude / max_band_value
                 
                 # Apply a power function to emphasize higher values
-                # Lower power value (0.5) will make spikes more prominent
-                emphasized_amplitude = normalized_amplitude ** 0.5
+                # Lower power value (0.4) will make spikes even more prominent
+                emphasized_amplitude = normalized_amplitude ** 0.4
                 
                 # Add a minimum threshold to ensure small values are still visible
-                if emphasized_amplitude < 0.1 and emphasized_amplitude > 0:
-                    emphasized_amplitude = 0.1
+                if emphasized_amplitude < 0.05 and emphasized_amplitude > 0:
+                    emphasized_amplitude = 0.05
                 
                 # Scale to appropriate display height
                 scaled_amplitude = int(emphasized_amplitude * max_amplitude)
@@ -367,24 +358,44 @@ class WaveformAnimation(SampleBase):
                 start_y = max(0, min(height - 1, start_y))
                 end_y = max(0, min(height - 1, end_y))
                 
+                # Determine if this is a dominant frequency
+                is_dominant = i in dominant_indices
+                
                 # Draw filled rectangle for this frequency band
                 for y in range(start_y, end_y + 1):
                     # Calculate color based on amplitude and position
                     distance_from_center = abs(y - mid_point) / max_amplitude
                     
-                    # Enhanced color scheme to make spikes more visible
-                    # Red component increases with amplitude
-                    red = int(255 * (0.7 + 0.3 * distance_from_center))
-                    
-                    # Green component for mid-range frequencies
-                    green = int(150 * (1 - distance_from_center * 0.5))
-                    
-                    # Blue component for high frequencies (spikes)
-                    blue = int(200 * distance_from_center)
+                    # Enhanced color scheme with special handling for dominant frequencies
+                    if is_dominant and normalized_amplitude > 0.7:
+                        # Dominant frequencies get a bright, distinctive color
+                        red = 255
+                        green = 255
+                        blue = 100
+                    else:
+                        # Regular frequencies use the gradient
+                        # Red component increases with amplitude
+                        red = int(255 * (0.7 + 0.3 * distance_from_center))
+                        
+                        # Green component for mid-range frequencies
+                        green = int(150 * (1 - distance_from_center * 0.5))
+                        
+                        # Blue component for high frequencies (spikes)
+                        blue = int(200 * distance_from_center)
                     
                     # Draw a horizontal line for this y-coordinate
                     for x_pos in range(x, min(x + band_pixel_width, width)):
                         canvas.SetPixel(x_pos, y, red, green, blue)
+                
+                # Add a highlight border for dominant frequencies
+                if is_dominant and normalized_amplitude > 0.7:
+                    # Draw a bright border around dominant frequencies
+                    border_color = (255, 255, 255)  # White border
+                    for x_pos in range(x, min(x + band_pixel_width, width)):
+                        if start_y > 0:
+                            canvas.SetPixel(x_pos, start_y, *border_color)
+                        if end_y < height - 1:
+                            canvas.SetPixel(x_pos, end_y, *border_color)
         else:
             # Fallback to a more dynamic waveform if no bands data
             # Try to extract any useful data from the waveform

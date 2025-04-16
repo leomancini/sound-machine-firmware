@@ -318,20 +318,19 @@ class WaveformAnimation(SampleBase):
                             # Vertical flip: (char_height - 1 - row)
                             canvas.SetPixel(char_x + (char_width - 1 - col), y + (char_height - 1 - row), color[0], color[1], color[2])
 
-    def draw_progress_bar(self, canvas, x, y, width, height, progress, color):
-        """Draw a progress bar on the canvas."""
-        # Draw the background (empty bar) - black
+    def draw_left_to_right_progress_bar(self, canvas, x, y, width, height, progress):
+        """Draw a progress bar that fills from left to right."""
+        # First, fill the entire area with black (background)
         for i in range(x, x + width):
             for j in range(y, y + height):
                 canvas.SetPixel(i, j, 0, 0, 0)  # Black background
         
-        # Calculate the filled portion width - ensure it's from left to right
-        # If progress is 0-100, this will fill from left to right
-        filled_width = int(width * progress / 100)
+        # Then, fill the appropriate portion with red, starting from the left
+        # Calculate how many pixels to fill based on progress (0-100)
+        pixels_to_fill = int((width * progress) / 100)
         
-        # Draw the filled portion - red (from left to right)
-        # Start from the left edge and move right
-        for i in range(x, x + filled_width):
+        # Fill from left to right
+        for i in range(x, x + pixels_to_fill):
             for j in range(y, y + height):
                 canvas.SetPixel(i, j, 255, 0, 0)  # Red color
 
@@ -425,9 +424,8 @@ class WaveformAnimation(SampleBase):
                 bar_x = 0  # Start from left edge
                 bar_y = 0  # Start from top edge
                 
-                # Draw the progress bar with red color
-                self.draw_progress_bar(offscreen_canvas, bar_x, bar_y, bar_width, bar_height, 
-                                      loading_progress, (255, 0, 0))  # Red color
+                # Use the new left-to-right progress bar method
+                self.draw_left_to_right_progress_bar(offscreen_canvas, bar_x, bar_y, bar_width, bar_height, loading_progress)
             else:
                 # Only draw waveform when not in loading state and not showing READY message
                 if has_tag_been_scanned and not show_ready:

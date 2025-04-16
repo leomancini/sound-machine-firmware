@@ -249,6 +249,9 @@ class WaveformAnimation(SampleBase):
         audio_finished_time = 0
         audio_finished = False
         
+        # Track if we've already extended the animation after audio finished
+        extended_after_audio_finished = False
+        
         while True:
             # Clear the canvas completely
             offscreen_canvas.Clear()
@@ -268,6 +271,7 @@ class WaveformAnimation(SampleBase):
                 if audio_finished_this_cycle:
                     audio_finished_time = time.time()
                     audio_finished = True
+                    extended_after_audio_finished = False
                     print(f"DEBUG: Audio finished at {audio_finished_time}")
                 
                 # Reset the new_tag_scanned flag if it was set
@@ -284,6 +288,7 @@ class WaveformAnimation(SampleBase):
                     
                     # Reset audio finished state for new tag
                     audio_finished = False
+                    extended_after_audio_finished = False
                     
                     # Ensure audio_playing is true when a new tag is scanned
                     if not audio_playing:
@@ -302,6 +307,7 @@ class WaveformAnimation(SampleBase):
                     
                     # Reset audio finished state for new tag
                     audio_finished = False
+                    extended_after_audio_finished = False
                     
                     # Ensure audio_playing is true for the new tag
                     if not audio_playing:
@@ -324,17 +330,27 @@ class WaveformAnimation(SampleBase):
                 should_continue_animation = True
                 print(f"DEBUG: Continuing animation because audio is still playing")
             # Continue if audio just finished and we haven't reached the minimum duration
-            elif audio_finished and (current_time - audio_finished_time < min_animation_duration):
+            elif audio_finished and not extended_after_audio_finished and (current_time - audio_finished_time < min_animation_duration):
                 should_continue_animation = True
                 print(f"DEBUG: Continuing animation after audio finished for minimum duration")
             else:
                 # Animation has run for the minimum duration and audio is not playing
                 animation_running = False
-                audio_finished = False
+                
+                # If audio finished and we've extended the animation, mark it as done
+                if audio_finished and not extended_after_audio_finished and (current_time - audio_finished_time >= min_animation_duration):
+                    extended_after_audio_finished = True
+                    print(f"DEBUG: Stopping animation after minimum duration since audio finished")
+                
+                # If we've extended the animation after audio finished, we can reset the audio_finished flag
+                if extended_after_audio_finished:
+                    audio_finished = False
             
             # Set audio_playing based on our decision
             if should_continue_animation:
                 audio_playing = True
+            else:
+                audio_playing = False
             
             # Only increment frame counter when audio is playing
             if audio_playing:

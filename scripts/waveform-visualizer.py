@@ -83,6 +83,7 @@ class WaveformAnimation(SampleBase):
                             # Always use red color
                             self.current_color = [255, 0, 0]
                             print(f"DEBUG: Set color to red")
+                            print(f"DEBUG: New tag scanned, set audio_playing to true")
                             
                             # Reset wave points to ensure animation starts fresh
                             print(f"DEBUG: New tag scanned, resetting animation")
@@ -179,9 +180,9 @@ class WaveformAnimation(SampleBase):
             if current_time - last_audio_check_time > audio_check_interval:
                 last_audio_check_time = current_time
                 with self.lock:
-                    # Only reset audio_playing to true if a new tag was recently scanned
-                    # and we haven't received a ready signal yet
-                    if self.tag_scanned and not self.audio_playing and self.new_tag_scanned:
+                    # Only reset audio_playing to true if a tag has been scanned
+                    # This helps ensure the animation starts when a new tag is scanned
+                    if self.tag_scanned and not self.audio_playing:
                         print("DEBUG: Tag scanned but audio_playing is false, resetting to true")
                         self.audio_playing = True
             
@@ -195,6 +196,12 @@ class WaveformAnimation(SampleBase):
                 if new_tag_scanned:
                     self.new_tag_scanned = False
                     print(f"DEBUG: Animation loop detected new_tag_scanned is true")
+                    
+                    # Ensure audio_playing is true when a new tag is scanned
+                    if not audio_playing:
+                        print(f"DEBUG: Setting audio_playing to true for new tag")
+                        self.audio_playing = True
+                        audio_playing = True
             
             # Get current color values (no transitions)
             red = self.current_color[0]

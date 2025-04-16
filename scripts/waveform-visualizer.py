@@ -325,10 +325,13 @@ class WaveformAnimation(SampleBase):
             for j in range(y, y + height):
                 canvas.SetPixel(i, j, 0, 0, 0)  # Black background
         
-        # Calculate the filled portion width
-        filled_width = int(width * progress / 100)
+        # Calculate the filled portion width - ensure it's from left to right
+        # If progress is 0-100, this will fill from left to right
+        # If it's still going right to left, we need to reverse the progress
+        reversed_progress = 100 - progress  # Reverse the progress
+        filled_width = int(width * reversed_progress / 100)
         
-        # Draw the filled portion - red
+        # Draw the filled portion - red (from left to right)
         for i in range(x, x + filled_width):
             for j in range(y, y + height):
                 canvas.SetPixel(i, j, 255, 0, 0)  # Red color

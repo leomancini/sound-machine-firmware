@@ -5,7 +5,6 @@ import random
 import threading
 import time
 import os
-import json
 
 class WaveformAnimation(SampleBase):
     def __init__(self, *args, **kwargs):

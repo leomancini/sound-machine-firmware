@@ -2,10 +2,15 @@
 from samplebase import SampleBase
 import time
 import random
+import threading
+import os
 
 class ColorTest(SampleBase):
     def __init__(self, *args, **kwargs):
         super(ColorTest, self).__init__(*args, **kwargs)
+        self.lock = threading.Lock()
+        
+        # Colors to display
         self.colors = [
             # Primary colors
             (255, 0, 0),    # Red
@@ -40,7 +45,16 @@ class ColorTest(SampleBase):
             (50, 205, 50),   # Lime Green
         ]
         
-        # Calculate how many rectangles we can fit
+        # Shuffle colors to make the display more interesting
+        random.shuffle(self.colors)
+        
+        # Animation parameters
+        self.animation_speed = 0.5  # Speed of color transitions
+        self.current_color_index = 0
+        self.next_color_index = 1
+        self.transition_progress = 0.0
+        
+        # Rectangle parameters
         self.rect_width = 4
         self.rect_height = 4
         self.rect_spacing = 1
@@ -48,9 +62,6 @@ class ColorTest(SampleBase):
         # Calculate grid dimensions
         self.cols = self.matrix.width // (self.rect_width + self.rect_spacing)
         self.rows = self.matrix.height // (self.rect_height + self.rect_spacing)
-        
-        # Shuffle colors to make the display more interesting
-        random.shuffle(self.colors)
         
         # Ensure we have enough colors for all rectangles
         while len(self.colors) < self.cols * self.rows:
@@ -67,34 +78,67 @@ class ColorTest(SampleBase):
             for j in range(y, y + height):
                 canvas.SetPixel(i, j, color[0], color[1], color[2])
     
+    def interpolate_color(self, color1, color2, progress):
+        """Interpolate between two colors based on progress (0.0 to 1.0)."""
+        r = int(color1[0] * (1 - progress) + color2[0] * progress)
+        g = int(color1[1] * (1 - progress) + color2[1] * progress)
+        b = int(color1[2] * (1 - progress) + color2[2] * progress)
+        return (r, g, b)
+    
     def run(self):
         offscreen_canvas = self.matrix.CreateFrameCanvas()
+        height = self.matrix.height
+        width = self.matrix.width
         
-        # Draw all color rectangles
-        color_index = 0
-        for row in range(self.rows):
-            for col in range(self.cols):
-                if color_index < len(self.colors):
-                    x = col * (self.rect_width + self.rect_spacing)
-                    y = row * (self.rect_height + self.rect_spacing)
-                    self.draw_rectangle(
-                        offscreen_canvas, 
-                        x, 
-                        y, 
-                        self.rect_width, 
-                        self.rect_height, 
-                        self.colors[color_index]
-                    )
-                    color_index += 1
+        # Animation variables
+        time_var = 0
         
-        # Update the display
-        offscreen_canvas = self.matrix.SwapOnVSync(offscreen_canvas)
-        
-        # Keep the display on for a while
         print("Color test display active. Press CTRL-C to exit.")
         try:
             while True:
-                time.sleep(1)
+                offscreen_canvas.Clear()
+                self.usleep(50 * 1000)  # Slightly slower update for smoother animation
+                time_var += 0.05
+                
+                # Update transition progress
+                self.transition_progress += self.animation_speed * 0.05
+                if self.transition_progress >= 1.0:
+                    self.transition_progress = 0.0
+                    self.current_color_index = self.next_color_index
+                    self.next_color_index = (self.next_color_index + 1) % len(self.colors)
+                
+                # Draw all color rectangles
+                color_index = 0
+                for row in range(self.rows):
+                    for col in range(self.cols):
+                        if color_index < len(self.colors):
+                            x = col * (self.rect_width + self.rect_spacing)
+                            y = row * (self.rect_height + self.rect_spacing)
+                            
+                            # Get current and next color for this rectangle
+                            current_color = self.colors[color_index]
+                            next_color = self.colors[(color_index + 1) % len(self.colors)]
+                            
+                            # Interpolate between colors
+                            color = self.interpolate_color(
+                                current_color, 
+                                next_color, 
+                                self.transition_progress
+                            )
+                            
+                            self.draw_rectangle(
+                                offscreen_canvas, 
+                                x, 
+                                y, 
+                                self.rect_width, 
+                                self.rect_height, 
+                                color
+                            )
+                            color_index += 1
+                
+                # Update the display
+                offscreen_canvas = self.matrix.SwapOnVSync(offscreen_canvas)
+                
         except KeyboardInterrupt:
             print("Exiting color test")
 

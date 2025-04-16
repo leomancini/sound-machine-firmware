@@ -47,7 +47,7 @@ class WaveformAnimation(SampleBase):
             os.chmod(self.progress_pipe_path, 0o666)
             
         # Single color for all tags (red)
-        self.current_color = [0, 0, 255]
+        self.current_color = [255, 0, 0]
             
         print("Starting with red color. Waiting for RFID tags...")
         
@@ -79,7 +79,7 @@ class WaveformAnimation(SampleBase):
                             self.tag_scanned = True
                             
                             # Always use red color
-                            self.current_color = [0, 0, 255]
+                            self.current_color = [255, 0, 0]
                             print(f"DEBUG: Set color to red")
                         
                         # Forward the tag ID to the audio player

@@ -242,7 +242,6 @@ class WaveformAnimation(SampleBase):
             
             # Only draw waveform when audio is playing
             if has_tag_been_scanned and audio_playing:
-                print(f"DEBUG: Drawing waveform, audio_playing={audio_playing}, has_tag_been_scanned={has_tag_been_scanned}")
                 # Generate new wave points based on sine waves and some randomness
                 for x in range(width):
                     # Create a smoother waveform using multiple sine waves
@@ -280,10 +279,6 @@ class WaveformAnimation(SampleBase):
                 mid_point = height // 2
                 for x in range(width):
                     offscreen_canvas.SetPixel(x, mid_point, 255, 0, 0)
-                
-                # Debug print when not drawing waveform
-                if has_tag_been_scanned and not audio_playing:
-                    print(f"DEBUG: Not drawing waveform, audio_playing={audio_playing}, has_tag_been_scanned={has_tag_been_scanned}")
             
             # Update the canvas
             offscreen_canvas = self.matrix.SwapOnVSync(offscreen_canvas)

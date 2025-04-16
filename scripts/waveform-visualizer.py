@@ -46,6 +46,9 @@ class WaveformAnimation(SampleBase):
         
         # Flag to indicate whether audio is currently playing
         self.audio_playing = False
+        
+        # Flag to indicate when a new tag is scanned
+        self.new_tag_scanned = False
 
     def load_all_tag_colors(self):
         """No longer needed since we use a single color."""
@@ -74,9 +77,15 @@ class WaveformAnimation(SampleBase):
                             # Set audio_playing to true when a new tag is scanned
                             self.audio_playing = True
                             
+                            # Set new_tag_scanned flag to true
+                            self.new_tag_scanned = True
+                            
                             # Always use red color
                             self.current_color = [255, 0, 0]
                             print(f"DEBUG: Set color to red")
+                            
+                            # Reset wave points to ensure animation starts fresh
+                            print(f"DEBUG: New tag scanned, resetting animation")
                         
                         # Forward the tag ID to the audio player
                         try:
@@ -164,11 +173,22 @@ class WaveformAnimation(SampleBase):
             with self.lock:
                 has_tag_been_scanned = self.tag_scanned
                 audio_playing = self.audio_playing
+                new_tag_scanned = self.new_tag_scanned
+                
+                # Reset the new_tag_scanned flag if it was set
+                if new_tag_scanned:
+                    self.new_tag_scanned = False
             
             # Get current color values (no transitions)
             red = self.current_color[0]
             green = self.current_color[1]
             blue = self.current_color[2]
+            
+            # Reset wave points if a new tag was scanned
+            if new_tag_scanned:
+                for x in range(width):
+                    wave_points[x] = height // 2
+                print("DEBUG: Reset wave points for new tag")
             
             # Only draw waveform when audio is playing
             if has_tag_been_scanned and audio_playing:

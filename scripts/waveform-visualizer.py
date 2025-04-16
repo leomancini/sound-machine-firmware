@@ -36,7 +36,7 @@ class WaveformAnimation(SampleBase):
         # Audio sync variables
         self.audio_start_time = 0
         self.audio_duration = 0  # Duration in seconds
-        self.frames_per_second = 15  # Reduced from 30 to 15 for slower animation
+        self.frames_per_second = 30  # Increased from 15 to 30 for better sync
         
         # Build the initial waveform cache
         self.build_waveform_cache()
@@ -67,6 +67,11 @@ class WaveformAnimation(SampleBase):
 
         # Flag to indicate audio finished naturally
         self.audio_just_finished = False
+        
+        # Audio sync tracking
+        self.last_audio_position = 0
+        self.audio_position = 0
+        self.audio_frame_count = 0
 
     def build_waveform_cache(self):
         """Build a cache of all available waveform.json files."""
@@ -126,6 +131,11 @@ class WaveformAnimation(SampleBase):
                             
                             # Reset wave points to ensure animation starts fresh
                             print(f"DEBUG: New tag scanned, resetting animation")
+                            
+                            # Reset audio sync tracking
+                            self.frame_counter = 0
+                            self.audio_position = 0
+                            self.audio_frame_count = 0
                             
                             # Prepare the waveform data for the visualizer
                             if tag_id in self.waveform_cache:
@@ -313,8 +323,22 @@ class WaveformAnimation(SampleBase):
         bands = []
 
         # Use time_var to cycle through frames at a slower rate
-        frame_index = int(time_var * 5) % len(waveform_data)
-        bands = waveform_data[frame_index]
+        # Adjust the frame rate to match audio playback
+        # Calculate the frame index based on the current time and audio position
+        if isinstance(waveform_data, list) and waveform_data:
+            # Calculate how many frames we have in total
+            total_frames = len(waveform_data)
+            
+            # Calculate the current frame based on time_var and audio position
+            # This helps synchronize the visualization with the audio
+            frame_index = int((time_var / self.frames_per_second) * total_frames) % total_frames
+            
+            # Get the bands for the current frame
+            bands = waveform_data[frame_index]
+            
+            # Update audio position tracking
+            self.audio_position = frame_index / total_frames
+            self.audio_frame_count = frame_index
         
         # If we have bands data, use it to create the visualization
         if bands:
@@ -358,44 +382,16 @@ class WaveformAnimation(SampleBase):
                 start_y = max(0, min(height - 1, start_y))
                 end_y = max(0, min(height - 1, end_y))
                 
-                # Determine if this is a dominant frequency
-                is_dominant = i in dominant_indices
-                
                 # Draw filled rectangle for this frequency band
                 for y in range(start_y, end_y + 1):
-                    # Calculate color based on amplitude and position
-                    distance_from_center = abs(y - mid_point) / max_amplitude
-                    
-                    # Enhanced color scheme with special handling for dominant frequencies
-                    if is_dominant and normalized_amplitude > 0.7:
-                        # Dominant frequencies get a bright, distinctive color
-                        red = 255
-                        green = 255
-                        blue = 100
-                    else:
-                        # Regular frequencies use the gradient
-                        # Red component increases with amplitude
-                        red = int(255 * (0.7 + 0.3 * distance_from_center))
-                        
-                        # Green component for mid-range frequencies
-                        green = int(150 * (1 - distance_from_center * 0.5))
-                        
-                        # Blue component for high frequencies (spikes)
-                        blue = int(200 * distance_from_center)
+                    # Use only red at full brightness (255, 0, 0)
+                    red = 255
+                    green = 0
+                    blue = 0
                     
                     # Draw a horizontal line for this y-coordinate
                     for x_pos in range(x, min(x + band_pixel_width, width)):
                         canvas.SetPixel(x_pos, y, red, green, blue)
-                
-                # Add a highlight border for dominant frequencies
-                if is_dominant and normalized_amplitude > 0.7:
-                    # Draw a bright border around dominant frequencies
-                    border_color = (255, 255, 255)  # White border
-                    for x_pos in range(x, min(x + band_pixel_width, width)):
-                        if start_y > 0:
-                            canvas.SetPixel(x_pos, start_y, *border_color)
-                        if end_y < height - 1:
-                            canvas.SetPixel(x_pos, end_y, *border_color)
         else:
             # Fallback to a more dynamic waveform if no bands data
             # Try to extract any useful data from the waveform
@@ -432,13 +428,8 @@ class WaveformAnimation(SampleBase):
                     end_y = mid_point + abs(amplitude)
                     
                     for y_pos in range(start_y, end_y + 1):
-                        # Enhanced color for better visibility of spikes
-                        distance_from_center = abs(y_pos - mid_point) / max_amplitude
-                        red = int(255 * (0.7 + 0.3 * distance_from_center))
-                        green = int(150 * (1 - distance_from_center * 0.5))
-                        blue = int(200 * distance_from_center)
-                        
-                        canvas.SetPixel(x, y_pos, red, green, blue)
+                        # Use only red at full brightness (255, 0, 0)
+                        canvas.SetPixel(x, y_pos, 255, 0, 0)
             else:
                 # If waveform_data is not a dict, fall back to default visualization
                 for x in range(width):
@@ -459,13 +450,8 @@ class WaveformAnimation(SampleBase):
                     end_y = mid_point + abs(amplitude)
                     
                     for y_pos in range(start_y, end_y + 1):
-                        # Enhanced color for better visibility of spikes
-                        distance_from_center = abs(y_pos - mid_point) / max_amplitude
-                        red = int(255 * (0.7 + 0.3 * distance_from_center))
-                        green = int(150 * (1 - distance_from_center * 0.5))
-                        blue = int(200 * distance_from_center)
-                        
-                        canvas.SetPixel(x, y_pos, red, green, blue)
+                        # Use only red at full brightness (255, 0, 0)
+                        canvas.SetPixel(x, y_pos, 255, 0, 0)
 
 # Main function
 if __name__ == "__main__":

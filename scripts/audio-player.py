@@ -41,51 +41,6 @@ MAX_CONCURRENT_DOWNLOADS = 5
 # Flag to track if we're stopping for a new tag
 stopping_for_new_tag = False
 
-def download_sound_parallel(tag_id):
-    """Download sound files in parallel."""
-    tag_dir = os.path.join(SOUNDS_BASE_DIR, tag_id)
-    os.makedirs(tag_dir, exist_ok=True)
-    
-    manifest_path = os.path.join(tag_dir, "manifest.json")
-    audio_path = os.path.join(tag_dir, "audio.mp3")
-    manifest_url = f"{REMOTE_SERVER}/{tag_id}/manifest.json"
-    audio_url = f"{REMOTE_SERVER}/{tag_id}/audio.mp3"
-    
-    # Check if files need to be updated using hash comparison
-    manifest_needs_update = True
-    audio_needs_update = True
-    
-    # Check manifest
-    if os.path.exists(manifest_path):
-        manifest_needs_update = False
-    
-    # Check audio
-    if os.path.exists(audio_path):
-        audio_needs_update = False
-    
-    # Download files in parallel if needed
-    with ThreadPoolExecutor(max_workers=2) as executor:
-        futures = []
-        
-        if manifest_needs_update:
-            futures.append(executor.submit(lambda: download_and_save_file(manifest_url, manifest_path)))
-        
-        if audio_needs_update:
-            futures.append(executor.submit(lambda: download_and_save_file(audio_url, audio_path)))
-        
-        # Wait for all downloads to complete
-        for future in as_completed(futures):
-            try:
-                future.result()
-            except Exception as e:
-                print(f"Error in parallel download for {tag_id}: {e}")
-    
-    # Verify both files exist
-    if os.path.exists(manifest_path) and os.path.exists(audio_path):
-        return audio_path
-    else:
-        return None
-
 def download_and_save_file(url, local_path):
     """Download a file from URL to local path with atomic write."""
     try:
@@ -135,6 +90,36 @@ def download_and_save_file(url, local_path):
             except:
                 pass
         return False
+
+def download_sound(tag_id):
+    """Download sound files for a tag."""
+    tag_dir = os.path.join(SOUNDS_BASE_DIR, tag_id)
+    os.makedirs(tag_dir, exist_ok=True)
+    
+    manifest_path = os.path.join(tag_dir, "manifest.json")
+    audio_path = os.path.join(tag_dir, "audio.mp3")
+    manifest_url = f"{REMOTE_SERVER}/{tag_id}/manifest.json"
+    audio_url = f"{REMOTE_SERVER}/{tag_id}/audio.mp3"
+    
+    # Check if files need to be updated
+    manifest_needs_update = not os.path.exists(manifest_path)
+    audio_needs_update = not os.path.exists(audio_path)
+    
+    # Download files if needed
+    manifest_success = True
+    audio_success = True
+    
+    if manifest_needs_update:
+        manifest_success = download_and_save_file(manifest_url, manifest_path)
+    
+    if audio_needs_update:
+        audio_success = download_and_save_file(audio_url, audio_path)
+    
+    # Verify both files exist
+    if os.path.exists(manifest_path) and os.path.exists(audio_path):
+        return audio_path
+    else:
+        return None
 
 def sync_sounds(force_update=False, is_initial_sync=False):
     """Sync local sounds with remote server."""
@@ -191,7 +176,7 @@ def sync_sounds(force_update=False, is_initial_sync=False):
             
             if manifest_needs_update or audio_needs_update:
                 print(f"Sound {tag_id} has changed, updating...")
-                futures[executor.submit(download_sound_parallel, tag_id)] = tag_id
+                futures[executor.submit(download_sound, tag_id)] = tag_id
             else:
                 print(f"Sound {tag_id} is up to date")
         
@@ -348,19 +333,9 @@ def play_sound(tag_id):
         audio_path = audio_cache[tag_id]
         print(f"Using cached audio for tag {tag_id}: {audio_path}")
     else:
-        # If not in cache and initial sync is not completed, download it
-        if not initial_sync_completed:
-            print(f"Tag {tag_id} not in cache, downloading during initial sync...")
-            audio_path = download_sound_parallel(tag_id)
-            if audio_path:
-                # Add to cache for future use
-                audio_cache[tag_id] = audio_path
-                print(f"Successfully downloaded sound for tag {tag_id}")
-            else:
-                print(f"Failed to download sound for tag {tag_id}")
-        else:
-            print(f"Tag {tag_id} not found in cache and initial sync completed. Skipping.")
-            audio_path = None
+        # By default, don't download sounds that aren't in the cache
+        print(f"Tag {tag_id} not found in cache. Skipping.")
+        audio_path = None
     
     if not audio_path or not os.path.exists(audio_path):
         print(f"Warning: Could not find audio file for tag {tag_id}")

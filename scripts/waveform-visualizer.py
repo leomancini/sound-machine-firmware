@@ -142,10 +142,14 @@ class WaveformAnimation(SampleBase):
                                 self.current_waveform_data = self.waveform_cache[tag_id]
                                 self.current_tag_id = tag_id
                                 print(f"Prepared waveform data for tag {tag_id}")
+                                
+                                # Verify that the waveform data is valid
+                                if self.current_waveform_data is None or (isinstance(self.current_waveform_data, list) and len(self.current_waveform_data) == 0):
+                                    print(f"WARNING: Waveform data for tag {tag_id} is empty or invalid")
+                                    # Don't set current_waveform_data to None here, keep the previous value
                             else:
-                                self.current_waveform_data = None
-                                self.current_tag_id = None
                                 print(f"No waveform data available for tag {tag_id}")
+                                # Don't reset current_waveform_data here, keep the previous value
                         
                         # Forward the tag ID to the audio player
                         try:
@@ -174,6 +178,13 @@ class WaveformAnimation(SampleBase):
                     if message == self.ready_message:
                         print("Received READY signal from audio player")
                         current_time = time.time()
+                        
+                        # Add a cooldown to prevent rapid transitions
+                        if current_time - last_ready_time < ready_cooldown:
+                            print(f"DEBUG: Ignoring READY signal due to cooldown")
+                            continue
+                            
+                        last_ready_time = current_time
                             
                         with self.lock:
                             # Set audio_playing to false when audio is done
@@ -226,6 +237,11 @@ class WaveformAnimation(SampleBase):
         last_audio_check_time = time.time()
         audio_check_interval = 1.0  # Check every second
         
+        # Add a minimum animation duration to ensure the waveform is visible
+        min_animation_duration = 2.0  # seconds
+        animation_start_time = 0
+        animation_running = False
+        
         while True:
             # Clear the canvas completely
             offscreen_canvas.Clear()
@@ -248,11 +264,22 @@ class WaveformAnimation(SampleBase):
                     # Reset frame counter when a new tag is scanned
                     self.frame_counter = 0
                     
+                    # Start the minimum animation duration timer
+                    animation_start_time = time.time()
+                    animation_running = True
+                    
                     # Ensure audio_playing is true when a new tag is scanned
                     if not audio_playing:
                         print(f"DEBUG: Setting audio_playing to true for new tag")
                         self.audio_playing = True
                         audio_playing = True
+            
+            # Check if we should continue animation based on minimum duration
+            current_time = time.time()
+            if animation_running and (current_time - animation_start_time < min_animation_duration):
+                # Force animation to continue for the minimum duration
+                audio_playing = True
+                print(f"DEBUG: Forcing animation to continue for minimum duration")
             
             # Only increment frame counter when audio is playing
             if audio_playing:
@@ -310,6 +337,7 @@ class WaveformAnimation(SampleBase):
     def draw_waveform_from_data(self, canvas, width, height, time_var):
         """Draw a waveform based on the cached waveform.json data."""
         if self.current_waveform_data is None:
+            print("DEBUG: No waveform data available, falling back to default visualization")
             return
             
         # Get the waveform data
@@ -329,6 +357,10 @@ class WaveformAnimation(SampleBase):
             # Calculate how many frames we have in total
             total_frames = len(waveform_data)
             
+            if total_frames == 0:
+                print("DEBUG: Waveform data is an empty list, falling back to default visualization")
+                return
+                
             # Calculate the current frame based on time_var and audio position
             # This helps synchronize the visualization with the audio
             frame_index = int((time_var / self.frames_per_second) * total_frames) % total_frames

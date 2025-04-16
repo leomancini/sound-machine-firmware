@@ -14,15 +14,7 @@ class WaveformAnimation(SampleBase):
         self.fifo_path = "/tmp/rfid_pipe"
         self.audio_fifo_path = "/tmp/rfid_audio_pipe"
         self.ready_pipe_path = "/tmp/ready_pipe"
-        self.ready_message = "READY"
-        self.show_ready_message = False
-        self.ready_message_time = 0
-        self.ready_message_duration = 5  # Show ready message for 5 seconds
-        
-        # Use the same path as the audio player
-        self.sounds_dir = "/home/fcc-005/sound-machine-firmware/sounds"
-        print(f"DEBUG: Sounds directory set to: {self.sounds_dir}")
-        
+
         # Create the pipes if they don't exist
         if not os.path.exists(self.fifo_path):
             os.mkfifo(self.fifo_path)
@@ -105,12 +97,6 @@ class WaveformAnimation(SampleBase):
                     if message == self.ready_message:
                         print("Received READY signal from audio player")
                         current_time = time.time()
-                        
-                        # Only reload colors if enough time has passed since the last reload
-                        if current_time - last_ready_time > ready_cooldown:
-                            print("System ready, reloading tag colors...")
-                            self.reload_tag_colors()
-                            last_ready_time = current_time
                             
                         with self.lock:
                             # Set audio_playing to false when audio is done
@@ -150,7 +136,7 @@ class WaveformAnimation(SampleBase):
         for i in range(width):
             wave_points.append(height // 2)
         
-        # Fixed brightness value for all colors
+        # Fixed brightness value
         BRIGHTNESS = 200  # Value between 0-255, where 255 is maximum brightness
         
         # Track if we're actually updating sounds

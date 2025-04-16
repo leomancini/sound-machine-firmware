@@ -31,6 +31,10 @@ audio_queue = queue.Queue()
 running = True
 # Current audio process
 current_audio_process = None
+# Flag to control the periodic sync thread
+periodic_sync_running = True
+# Interval for periodic sync (in seconds)
+PERIODIC_SYNC_INTERVAL = 300  # 5 minutes
 
 def get_remote_timestamp(url):
     """Get last-modified timestamp of a remote file."""
@@ -188,16 +192,42 @@ def sync_sounds(force_update=False):
             # For manifest, compare the actual content
             if os.path.exists(manifest_path):
                 try:
+                    # Parse local manifest as JSON
                     with open(manifest_path, 'r') as f:
                         local_manifest_content = f.read().strip()
+                        try:
+                            local_manifest_json = json.loads(local_manifest_content)
+                        except json.JSONDecodeError as e:
+                            print(f"Error parsing local manifest JSON for {tag_id}: {e}")
+                            local_manifest_json = None
                     
+                    # Parse remote manifest as JSON
                     response = requests.get(manifest_url)
                     response.raise_for_status()
                     remote_manifest_content = response.text.strip()
+                    try:
+                        remote_manifest_json = json.loads(remote_manifest_content)
+                    except json.JSONDecodeError as e:
+                        print(f"Error parsing remote manifest JSON for {tag_id}: {e}")
+                        remote_manifest_json = None
                     
-                    if local_manifest_content != remote_manifest_content:
-                        manifest_changed = True
-                        print(f"Manifest content changed for {tag_id}")
+                    # Compare JSON objects if both were successfully parsed
+                    if local_manifest_json is not None and remote_manifest_json is not None:
+                        # Compare the actual data values
+                        if local_manifest_json != remote_manifest_json:
+                            manifest_changed = True
+                            print(f"Manifest content changed for {tag_id}")
+                            print(f"  Local: {json.dumps(local_manifest_json)}")
+                            print(f"  Remote: {json.dumps(remote_manifest_json)}")
+                        else:
+                            print(f"Manifest content is identical for {tag_id}")
+                    else:
+                        # If JSON parsing failed, fall back to string comparison
+                        if local_manifest_content != remote_manifest_content:
+                            manifest_changed = True
+                            print(f"Manifest content changed for {tag_id} (string comparison)")
+                            print(f"  Local: {local_manifest_content}")
+                            print(f"  Remote: {remote_manifest_content}")
                 except Exception as e:
                     print(f"Error comparing manifest content for {tag_id}: {e}")
                     # If we can't compare content, fall back to timestamp comparison
@@ -506,25 +536,63 @@ def play_sound(tag_id):
     # Add the audio file to the queue for playback
     audio_queue.put(audio_path)
 
+def periodic_sync_thread():
+    """Thread function to periodically sync sounds with the server."""
+    global periodic_sync_running
+    
+    print("Starting periodic sync thread")
+    while periodic_sync_running:
+        try:
+            # Sleep for the specified interval
+            time.sleep(PERIODIC_SYNC_INTERVAL)
+            
+            # Check if we should still be running
+            if not periodic_sync_running:
+                break
+                
+            print("Running periodic sync...")
+            # Run sync without force update
+            sync_sounds(force_update=False)
+        except Exception as e:
+            print(f"Error in periodic sync thread: {e}")
+            # Sleep for a bit before retrying
+            time.sleep(60)
+    
+    print("Periodic sync thread stopped")
+
 def cleanup(*args):
-    global running
-    print("\nShutting down audio player...")
-    # Stop the audio player thread
+    """Clean up resources before exiting."""
+    global running, periodic_sync_running, current_audio_process
+    
+    print("Cleaning up...")
     running = False
-    # Kill any active mpg123 processes
-    try:
-        subprocess.run(["pkill", "mpg123"], check=False)
-    except:
-        pass
+    periodic_sync_running = False
+    
+    # Stop the current audio process if it's running
+    if current_audio_process and current_audio_process.poll() is None:
+        print("Stopping current audio process...")
+        current_audio_process.terminate()
+        try:
+            current_audio_process.wait(timeout=5)
+        except subprocess.TimeoutExpired:
+            print("Audio process did not terminate, killing...")
+            current_audio_process.kill()
+    
+    print("Cleanup complete")
     sys.exit(0)
 
 def main():
-    global running
+    global running, periodic_sync_running
     
     # Parse command line arguments
     parser = argparse.ArgumentParser(description='Audio player for sound machine')
     parser.add_argument('--force-update', action='store_true', help='Force update all sounds regardless of timestamps')
+    parser.add_argument('--sync-interval', type=int, default=300, help='Interval in seconds for periodic sync (default: 300)')
     args = parser.parse_args()
+    
+    # Set the sync interval from command line args
+    global PERIODIC_SYNC_INTERVAL
+    PERIODIC_SYNC_INTERVAL = args.sync_interval
     
     # Set up signal handlers for clean exit
     signal.signal(signal.SIGINT, cleanup)
@@ -538,6 +606,7 @@ def main():
     print(f"Audio Player started. Listening for RFID tags from: {FIFO_PATH}")
     print(f"Downloading sounds from: {REMOTE_SERVER}/<tag_id>/audio.mp3")
     print(f"Caching sounds in: {SOUNDS_BASE_DIR}")
+    print(f"Periodic sync interval: {PERIODIC_SYNC_INTERVAL} seconds")
     
     # Sync sounds on startup - this will:
     # 1. Get list of all sounds on the server
@@ -559,6 +628,10 @@ def main():
     # Start the audio player thread
     audio_thread = threading.Thread(target=audio_player_thread, daemon=True)
     audio_thread.start()
+    
+    # Start the periodic sync thread
+    sync_thread = threading.Thread(target=periodic_sync_thread, daemon=True)
+    sync_thread.start()
     
     # Main loop - continuously read from the pipe
     while True:

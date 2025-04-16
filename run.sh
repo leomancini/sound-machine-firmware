@@ -41,7 +41,7 @@ echo "Starting Waveform Visualizer in a screen session..."
 screen -dmS waveform-visualizer bash -c "cd $BASE_DIR && sudo python waveform-visualizer.py -m=adafruit-hat --led-rows=32 --led-cols=64 --led-slowdown-gpio=4; exec bash"
 
 echo "Starting Audio Player in a screen session..."
-screen -dmS audio-player bash -c "cd $BASE_DIR && sudo python audio-player.py --force-update; exec bash"
+screen -dmS audio-player bash -c "cd $BASE_DIR && sudo python audio-player.py --force-update --sync-interval=60; exec bash"
 
 echo "All scripts are now running in separate screen sessions."
 echo ""

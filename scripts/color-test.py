@@ -65,9 +65,11 @@ class ColorTest(SampleBase):
     
     def draw_rectangle(self, canvas, x, y, width, height, color):
         """Draw a rectangle with the given color."""
+        # For 2.5mm pitch 64x32 display, swap green and blue channels
+        r, g, b = color
         for i in range(x, x + width):
             for j in range(y, y + height):
-                canvas.SetPixel(i, j, color[0], color[1], color[2])
+                canvas.SetPixel(i, j, r, b, g)  # Swapped g and b
     
     def interpolate_color(self, color1, color2, progress):
         """Interpolate between two colors based on progress (0.0 to 1.0)."""
@@ -149,5 +151,5 @@ class ColorTest(SampleBase):
 # Main function
 if __name__ == "__main__":
     color_test = ColorTest()
-    if (not color_test.process()):
+    if not color_test.process():
         color_test.print_help() 

@@ -579,6 +579,7 @@ def main():
     parser.add_argument('--force-update', action='store_true', help='Force update all sounds regardless of timestamps')
     parser.add_argument('--sync-interval', type=int, default=300, help='Interval in seconds for periodic sync (default: 300)')
     parser.add_argument('--max-downloads', type=int, default=5, help='Maximum number of concurrent downloads (default: 5)')
+    parser.add_argument('--resync', action='store_true', help='Perform a full resync on startup')
     args = parser.parse_args()
     
     # Set the sync interval from command line args
@@ -609,9 +610,17 @@ def main():
     sync_thread = threading.Thread(target=periodic_sync_thread, daemon=True)
     sync_thread.start()
     
-    # Sync sounds on startup in a separate thread to avoid blocking
-    sync_thread = threading.Thread(target=lambda: sync_sounds(force_update=args.force_update, is_initial_sync=True), daemon=True)
-    sync_thread.start()
+    # Only sync sounds on startup if --resync flag is provided
+    if args.resync:
+        print("Performing full resync on startup...")
+        sync_thread = threading.Thread(target=lambda: sync_sounds(force_update=args.force_update, is_initial_sync=True), daemon=True)
+        sync_thread.start()
+    else:
+        print("Skipping initial sync. Using existing sounds on device.")
+        # Build the audio cache from existing files
+        build_audio_cache()
+        # Signal that the system is ready
+        signal_ready()
     
     # Print audio device information
     print("\nDetected audio devices:")

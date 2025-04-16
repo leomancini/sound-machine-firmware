@@ -197,8 +197,12 @@ class WaveformAnimation(SampleBase):
                         # Set the pixel with the current color
                         offscreen_canvas.SetPixel(x, y, red, green, blue)
             else:
+                # Immediately reset wave points to a flat line when audio stops
+                for x in range(width):
+                    wave_points[x] = height // 2
+                
                 # Before any tag is scanned or when audio is not playing,
-                # just draw a single horizontal line
+                # just draw a single horizontal line in red (255, 0, 0)
                 mid_point = height // 2
                 for x in range(width):
                     offscreen_canvas.SetPixel(x, mid_point, 255, 0, 0)

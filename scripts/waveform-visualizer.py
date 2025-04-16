@@ -52,6 +52,13 @@ class WaveformAnimation(SampleBase):
         
         # Load all color information during initialization
         self.load_all_tag_colors()
+        
+        # Color transition variables
+        self.current_color = [180, 180, 180]  # Default grey
+        self.target_color = [180, 180, 180]  # Default grey
+        self.color_transition_speed = 0.1  # Speed of color transition (0-1)
+        self.last_color_change_time = 0
+        self.color_change_cooldown = 0.5  # Seconds to wait before allowing another color change
             
         print("Starting in grey mode. Waiting for RFID tags...")
         print("  - Tags with a manifest file will use their custom color")
@@ -185,8 +192,13 @@ class WaveformAnimation(SampleBase):
                             # Try to get color from cached tag colors
                             if tag_id in self.tag_colors:
                                 print(f"DEBUG: Using cached color for tag: '{tag_id}'")
-                                self.custom_color = self.tag_colors[tag_id]
-                                print(f"DEBUG: Set custom color to: {self.custom_color}")
+                                new_color = self.tag_colors[tag_id]
+                                print(f"DEBUG: Found color for tag: {new_color}")
+                                
+                                # Set the target color for smooth transition
+                                self.target_color = new_color
+                                self.last_color_change_time = time.time()
+                                print(f"DEBUG: Set target color to: {self.target_color}")
                             else:
                                 # If not in cache, try to load it from the manifest file
                                 custom_color = self.get_color_from_manifest(tag_id)
@@ -194,11 +206,16 @@ class WaveformAnimation(SampleBase):
                                 if custom_color:
                                     print(f"DEBUG: Using custom color from manifest: {custom_color}")
                                     # Ensure the color values are integers
-                                    self.custom_color = [int(c) for c in custom_color]
-                                    print(f"DEBUG: Set custom color to: {self.custom_color}")
+                                    new_color = [int(c) for c in custom_color]
+                                    print(f"DEBUG: Set target color to: {new_color}")
+                                    
+                                    # Set the target color for smooth transition
+                                    self.target_color = new_color
+                                    self.last_color_change_time = time.time()
                                 else:
                                     print(f"DEBUG: No manifest found for tag: '{tag_id}', setting to GREY")
-                                    self.custom_color = None
+                                    self.target_color = [180, 180, 180]  # Default grey
+                                    self.last_color_change_time = time.time()
                         
                         # Forward the tag ID to the audio player
                         try:
@@ -244,6 +261,21 @@ class WaveformAnimation(SampleBase):
                         try:
                             progress, message = data.split(',', 1)
                             progress = int(progress)
+                            
+                            # Check if the message contains a tag ID
+                            tag_id = None
+                            if "Updating sound" in message:
+                                # Extract the tag ID from the message
+                                parts = message.split("Updating sound")
+                                if len(parts) > 1:
+                                    tag_id = parts[1].strip()
+                                    
+                                    # Check if the sound directory exists for this tag
+                                    sound_dir = os.path.join(self.sounds_dir, tag_id)
+                                    if not os.path.exists(sound_dir):
+                                        print(f"DEBUG: Skipping progress update for non-existent sound: {tag_id}")
+                                        continue
+                            
                             with self.lock:
                                 self.loading_progress = progress
                                 self.loading_message = message
@@ -446,6 +478,11 @@ class WaveformAnimation(SampleBase):
         last_color_debug_time = 0
         color_debug_interval = 5  # Only print color debug messages every 5 seconds
         
+        # Track if we're actually updating sounds
+        updating_sounds = False
+        last_progress_update_time = 0
+        progress_timeout = 10  # Seconds to wait before assuming no sounds are being updated
+        
         while True:
             offscreen_canvas.Clear()
             self.usleep(50 * 1000)  # Slightly slower update for smoother animation
@@ -459,38 +496,65 @@ class WaveformAnimation(SampleBase):
                 show_loading = self.show_loading_message
                 loading_progress = self.loading_progress
                 loading_message = self.loading_message
-                custom_color = self.custom_color
+                target_color = self.target_color
+                last_color_change_time = self.last_color_change_time
             
             # Check if ready message should be hidden
             if show_ready and time.time() - ready_time > self.ready_message_duration:
                 with self.lock:
                     self.show_ready_message = False
             
-            # Set colors based on the color scheme, with fixed brightness
-            if custom_color is not None:
-                # Use the custom color from the manifest directly
-                red = custom_color[0]
-                green = custom_color[1]
-                blue = custom_color[2]
-                # Only print debug message if color has changed or enough time has passed
-                current_time = time.time()
-                if (custom_color != last_custom_color or 
-                    (current_time - last_color_debug_time) >= color_debug_interval):
-                    print(f"DEBUG: Drawing waveform with color: R={red}, G={green}, B={blue}")
-                    last_custom_color = custom_color.copy()  # Make a copy to avoid reference issues
-                    last_color_debug_time = current_time
-            else:
-                # Fallback to grey if no custom color
-                red = BRIGHTNESS
-                green = BRIGHTNESS
-                blue = BRIGHTNESS
-                # Only print debug message if color has changed or enough time has passed
-                current_time = time.time()
-                if (last_custom_color is not None or 
-                    (current_time - last_color_debug_time) >= color_debug_interval):
-                    print("DEBUG: Drawing waveform in grey mode")
-                    last_custom_color = None
-                    last_color_debug_time = current_time
+            # Check if we're actually updating sounds
+            current_time = time.time()
+            if "Updating sound" in loading_message:
+                updating_sounds = True
+                last_progress_update_time = current_time
+            elif current_time - last_progress_update_time > progress_timeout:
+                updating_sounds = False
+                with self.lock:
+                    self.show_loading_message = False
+            
+            # Smooth color transition
+            if current_time - last_color_change_time > self.color_change_cooldown:
+                # Calculate the difference between current and target colors
+                color_diff = [
+                    target_color[0] - self.current_color[0],
+                    target_color[1] - self.current_color[1],
+                    target_color[2] - self.current_color[2]
+                ]
+                
+                # Apply the transition
+                if abs(color_diff[0]) > 1 or abs(color_diff[1]) > 1 or abs(color_diff[2]) > 1:
+                    self.current_color = [
+                        self.current_color[0] + color_diff[0] * self.color_transition_speed,
+                        self.current_color[1] + color_diff[1] * self.color_transition_speed,
+                        self.current_color[2] + color_diff[2] * self.color_transition_speed
+                    ]
+                    
+                    # Ensure values are within valid range
+                    self.current_color = [
+                        max(0, min(255, int(self.current_color[0]))),
+                        max(0, min(255, int(self.current_color[1]))),
+                        max(0, min(255, int(self.current_color[2])))
+                    ]
+                    
+                    # Print debug info occasionally
+                    if current_time - last_color_debug_time >= color_debug_interval:
+                        print(f"DEBUG: Transitioning color to: R={self.current_color[0]}, G={self.current_color[1]}, B={self.current_color[2]}")
+                        last_color_debug_time = current_time
+            
+            # Set colors based on the current color
+            red = self.current_color[0]
+            green = self.current_color[1]
+            blue = self.current_color[2]
+            
+            # Only print debug message if color has changed or enough time has passed
+            current_time = time.time()
+            if (self.current_color != last_custom_color or 
+                (current_time - last_color_debug_time) >= color_debug_interval):
+                print(f"DEBUG: Drawing waveform with color: R={red}, G={green}, B={blue}")
+                last_custom_color = self.current_color.copy()  # Make a copy to avoid reference issues
+                last_color_debug_time = current_time
             
             # Check if a tag has been scanned
             if has_tag_been_scanned:
@@ -520,8 +584,7 @@ class WaveformAnimation(SampleBase):
                     end_y = mid_point + abs(amplitude)
                     
                     for y in range(start_y, end_y + 1):
-                        # Set the pixel with the correct color directly from the manifest
-                        # No intensity scaling needed as the wave shape is already handled by the amplitude
+                        # Set the pixel with the current color
                         offscreen_canvas.SetPixel(x, y, red, green, blue)
             else:
                 # Before any tag is scanned, just draw a single horizontal gray line
@@ -530,7 +593,7 @@ class WaveformAnimation(SampleBase):
                     offscreen_canvas.SetPixel(x, mid_point, BRIGHTNESS, BRIGHTNESS, BRIGHTNESS)
             
             # Draw loading message if needed
-            if show_loading:
+            if show_loading and updating_sounds:
                 # Draw the loading message
                 text = "LOADING"
                 text_width = len(text) * 6  # 5 pixels wide + 1 pixel spacing

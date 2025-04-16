@@ -30,6 +30,9 @@ class WaveformAnimation(SampleBase):
         self.current_waveform_data = None
         self.current_tag_id = None
         
+        # Frame counter for animation
+        self.frame_counter = 0
+        
         # Build the initial waveform cache
         self.build_waveform_cache()
 
@@ -212,18 +215,6 @@ class WaveformAnimation(SampleBase):
             # Clear the canvas completely
             offscreen_canvas.Clear()
             self.usleep(50 * 1000)  # Slightly slower update for smoother animation
-            time_var += 0.2
-            
-            # Periodically check if audio_playing is false but should be true
-            current_time = time.time()
-            if current_time - last_audio_check_time > audio_check_interval:
-                last_audio_check_time = current_time
-                with self.lock:
-                    # Failsafe: If a NEW tag was just scanned but audio_playing is still false,
-                    # force it to true. This shouldn't normally be needed.
-                    if self.new_tag_scanned and not self.audio_playing:
-                        print("DEBUG (Periodic Check - Failsafe): New tag scanned but audio_playing is false. Resetting audio_playing=True")
-                        self.audio_playing = True
             
             # Get the current state (thread-safe)
             with self.lock:
@@ -233,14 +224,14 @@ class WaveformAnimation(SampleBase):
                 
                 # Read the audio_just_finished flag (don't reset it here)
                 audio_finished_this_cycle = self.audio_just_finished
-                # Reset the flag immediately after reading
-                # if self.audio_just_finished:
-                #    self.audio_just_finished = False
                 
                 # Reset the new_tag_scanned flag if it was set
                 if new_tag_scanned:
                     self.new_tag_scanned = False
                     print(f"DEBUG: Animation loop detected new_tag_scanned is true")
+                    
+                    # Reset frame counter when a new tag is scanned
+                    self.frame_counter = 0
                     
                     # Ensure audio_playing is true when a new tag is scanned
                     if not audio_playing:
@@ -248,11 +239,10 @@ class WaveformAnimation(SampleBase):
                         self.audio_playing = True
                         audio_playing = True
             
-            # Reset wave points if a new tag was scanned
-            if new_tag_scanned:
-                for x in range(width):
-                    wave_points[x] = height // 2
-                print("DEBUG: Reset wave points for new tag")
+            # Only increment frame counter when audio is playing
+            if audio_playing:
+                self.frame_counter += 1
+                time_var = self.frame_counter
             
             # Only draw waveform when audio is playing
             if has_tag_been_scanned and audio_playing:

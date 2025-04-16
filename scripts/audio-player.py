@@ -407,6 +407,14 @@ def audio_player_thread():
                 cmd = ["mpg123", "-a", "hw:0,0", audio_path]
                 current_audio_process = subprocess.Popen(cmd, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
                 print(f"Playing audio: {audio_path}")
+                
+                # Wait for the audio to finish playing
+                current_audio_process.wait()
+                
+                # Signal that the audio is done playing
+                signal_ready()
+                print("Audio finished playing, sent READY signal")
+                
             except Exception as e:
                 print(f"Error playing sound with USB Audio device: {e}")
                 try:
@@ -414,9 +422,21 @@ def audio_player_thread():
                     cmd = ["mpg123", "--device", "hw:0,0", audio_path]
                     current_audio_process = subprocess.Popen(cmd, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
                     print(f"Playing audio with alternative command: {audio_path}")
+                    
+                    # Wait for the audio to finish playing
+                    current_audio_process.wait()
+                    
+                    # Signal that the audio is done playing
+                    signal_ready()
+                    print("Audio finished playing, sent READY signal")
+                    
                 except Exception as e2:
                     print(f"Alternative also failed: {e2}")
                     current_audio_process = None
+                    
+                    # Signal that the audio is done playing even if it failed
+                    signal_ready()
+                    print("Audio failed to play, sent READY signal anyway")
             
             # Mark the task as done
             audio_queue.task_done()

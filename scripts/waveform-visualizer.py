@@ -459,13 +459,6 @@ class WaveformAnimation(SampleBase):
                 
                 # Use the new left-to-right progress bar method
                 self.draw_left_to_right_progress_bar(offscreen_canvas, bar_x, bar_y, bar_width, bar_height, loading_progress)
-                
-                # Display the progress percentage in the center of the screen
-                if self.initial_loading:
-                    progress_text = f"{int(loading_progress)}%"
-                    text_x = width // 2
-                    text_y = height // 2
-                    self.draw_text(offscreen_canvas, progress_text, text_x, text_y, (255, 255, 255))  # White text
             else:
                 # Only draw waveform when not in loading state and not showing READY message
                 if has_tag_been_scanned and not show_ready:

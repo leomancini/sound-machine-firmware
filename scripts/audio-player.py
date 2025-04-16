@@ -41,49 +41,6 @@ MAX_CONCURRENT_DOWNLOADS = 5
 # Flag to track if we're stopping for a new tag
 stopping_for_new_tag = False
 
-def get_local_hash(file_path):
-    """Get MD5 hash of a local file."""
-    try:
-        if not os.path.exists(file_path):
-            return None
-        with open(file_path, 'rb') as f:
-            return hashlib.md5(f.read()).hexdigest()
-    except (IOError, FileNotFoundError):
-        return None
-
-def get_local_timestamp(file_path):
-    """Get last-modified timestamp of a local file."""
-    try:
-        return datetime.fromtimestamp(os.path.getmtime(file_path)).strftime('%a, %d %b %Y %H:%M:%S GMT')
-    except (IOError, FileNotFoundError):
-        return None
-
-def get_remote_sounds():
-    """Get list of all available sounds from the server."""
-    try:
-        response = requests.get(REMOTE_SERVER)
-        response.raise_for_status()
-        # Parse the directory listing to get tag IDs
-        tag_ids = []
-        for line in response.text.split('\n'):
-            if '<a href="' in line and '/">' in line:
-                tag_id = line.split('<a href="')[1].split('/">')[0]
-                # Only include numeric tag IDs that have both required files
-                if tag_id.isdigit():
-                    # Check if both required files exist
-                    try:
-                        manifest_url = f"{REMOTE_SERVER}/{tag_id}/manifest.json"
-                        audio_url = f"{REMOTE_SERVER}/{tag_id}/audio.mp3"
-                        if (requests.head(manifest_url).status_code == 200 and 
-                            requests.head(audio_url).status_code == 200):
-                            tag_ids.append(tag_id)
-                    except requests.exceptions.RequestException:
-                        continue
-        return tag_ids
-    except requests.exceptions.RequestException as e:
-        print(f"Error getting remote sounds list: {e}")
-        return []
-
 def send_progress(progress, message):
     """Send progress update to the visualizer."""
     # This function is no longer needed since we removed the progress bar
@@ -192,14 +149,6 @@ def sync_sounds(force_update=False, is_initial_sync=False):
     if force_update:
         print("FORCE UPDATE MODE: Will update all sounds regardless of timestamps")
     
-    # Get list of remote sounds
-    remote_sounds = get_remote_sounds()
-    if not remote_sounds:
-        print("Warning: Could not get list of remote sounds")
-        return
-    
-    print(f"Found {len(remote_sounds)} valid sounds on remote server")
-    
     # Get list of local sounds
     local_sounds = []
     try:
@@ -215,29 +164,11 @@ def sync_sounds(force_update=False, is_initial_sync=False):
     
     print(f"Found {len(local_sounds)} valid sounds in local cache")
     
-    # Delete sounds that no longer exist on the server
-    deleted_count = 0
-    for tag_id in local_sounds:
-        if tag_id not in remote_sounds:
-            try:
-                tag_dir = os.path.join(SOUNDS_BASE_DIR, tag_id)
-                print(f"Deleting local sound {tag_id} (no longer on server)")
-                subprocess.run(["rm", "-rf", tag_dir], check=True)
-                deleted_count += 1
-            except Exception as e:
-                print(f"Error deleting local sound {tag_id}: {e}")
-    
-    # Download new or changed sounds
-    total_sounds = len(remote_sounds)
-    processed_sounds = 0
-    new_sounds = 0
-    updated_sounds = 0
-    
     # Process sounds in parallel batches
     with ThreadPoolExecutor(max_workers=MAX_CONCURRENT_DOWNLOADS) as executor:
         futures = {}
         
-        for tag_id in remote_sounds:
+        for tag_id in local_sounds:
             tag_dir = os.path.join(SOUNDS_BASE_DIR, tag_id)
             manifest_path = os.path.join(tag_dir, "manifest.json")
             audio_path = os.path.join(tag_dir, "audio.mp3")
@@ -246,36 +177,28 @@ def sync_sounds(force_update=False, is_initial_sync=False):
             manifest_url = f"{REMOTE_SERVER}/{tag_id}/manifest.json"
             audio_url = f"{REMOTE_SERVER}/{tag_id}/audio.mp3"
             
-            if tag_id not in local_sounds:
-                print(f"Downloading new sound {tag_id}")
-                futures[executor.submit(download_sound_parallel, tag_id)] = tag_id
-                new_sounds += 1
-            else:
-                # Check if files have changed using hash comparison
+            # Check if files have changed using hash comparison
+            manifest_needs_update = True
+            audio_needs_update = True
+            
+            # Check manifest
+            if os.path.exists(manifest_path):
+                manifest_needs_update = False
+            
+            # Check audio
+            if os.path.exists(audio_path):
+                audio_needs_update = False
+            
+            # If force update is enabled, always update
+            if force_update:
                 manifest_needs_update = True
                 audio_needs_update = True
-                
-                # Check manifest
-                if os.path.exists(manifest_path):
-                    manifest_needs_update = False
-                
-                # Check audio
-                if os.path.exists(audio_path):
-                    audio_needs_update = False
-                
-                # If force update is enabled, always update
-                if force_update:
-                    manifest_needs_update = True
-                    audio_needs_update = True
-                
-                if manifest_needs_update or audio_needs_update:
-                    print(f"Sound {tag_id} has changed, updating...")
-                    futures[executor.submit(download_sound_parallel, tag_id)] = tag_id
-                    updated_sounds += 1
-                else:
-                    print(f"Sound {tag_id} is up to date")
             
-            processed_sounds += 1
+            if manifest_needs_update or audio_needs_update:
+                print(f"Sound {tag_id} has changed, updating...")
+                futures[executor.submit(download_sound_parallel, tag_id)] = tag_id
+            else:
+                print(f"Sound {tag_id} is up to date")
         
         # Wait for all downloads to complete
         for future in as_completed(futures):

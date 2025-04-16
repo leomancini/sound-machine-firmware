@@ -126,8 +126,9 @@ class WaveformAnimation(SampleBase):
                             # Set audio_playing to false when audio is done
                             was_playing = self.audio_playing
                             self.audio_playing = False
-                            # Clear the new_tag_scanned flag to prevent restarting
-                            self.new_tag_scanned = False
+                            # DO NOT Clear the new_tag_scanned flag here
+                            # Let the animation loop handle it to ensure proper start
+                            # self.new_tag_scanned = False 
                             print(f"DEBUG: Audio finished playing, animation should stop. Was playing: {was_playing}")
                             
                             # Force reset wave points to ensure immediate transition
@@ -182,10 +183,10 @@ class WaveformAnimation(SampleBase):
             if current_time - last_audio_check_time > audio_check_interval:
                 last_audio_check_time = current_time
                 with self.lock:
-                    # Only reset audio_playing to true if a tag has been scanned AND
-                    # we haven't received a ready signal yet (audio hasn't finished)
-                    if self.tag_scanned and not self.audio_playing and self.new_tag_scanned:
-                        print("DEBUG: Tag scanned but audio_playing is false, resetting to true")
+                    # If a tag has been scanned but audio is not marked as playing,
+                    # set it back to true. This is a fallback.
+                    if self.tag_scanned and not self.audio_playing:
+                        print("DEBUG (Periodic Check): Tag scanned but audio_playing is false, resetting to true")
                         self.audio_playing = True
             
             # Get the current state (thread-safe)

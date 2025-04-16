@@ -44,26 +44,34 @@ class WaveformAnimation(SampleBase):
             os.mkfifo(self.progress_pipe_path)
             os.chmod(self.progress_pipe_path, 0o666)
             
+        # Dictionary to store color information for each tag
+        self.tag_colors = {
+            # Bright, vibrant colors for each tag
+            "0008451145": [255, 0, 0],
+            "0008479619": [0, 255, 0],
+            "0009239271": [0, 0, 255],
+            "0009466586": [255, 255, 0],
+            "0009466587": [255, 0, 255],
+            "0009466588": [0, 255, 255],
+            "0009466589": [255, 255, 0],
+            "0009466590": [255, 0, 255],
+            "0009466591": [0, 0, 255],
+            "0009466592": [255, 0, 0],
+        }
+        
+        # Default color for unknown tags (slightly blue-tinted white)
+        self.default_color = [200, 200, 255]
+        
+        # Current color state (no more transitions)
+        self.current_color = self.default_color.copy()
+            
+        print("Starting with default color. Waiting for RFID tags...")
+        print("Available tag colors:")
+        for tag_id, color in self.tag_colors.items():
+            print(f"  - Tag {tag_id}: R={color[0]}, G={color[1]}, B={color[2]}")
+        
         # Flag to indicate whether a tag has been scanned
         self.tag_scanned = False
-        
-        # Dictionary to store color information for each tag
-        self.tag_colors = {}
-        
-        # Load all color information during initialization
-        self.load_all_tag_colors()
-        
-        # Color transition variables
-        # Adjust white color to account for LED matrix color balance
-        self.current_color = [200, 200, 255]  # Slightly blue-tinted white
-        self.target_color = [200, 200, 255]  # Slightly blue-tinted white
-        self.color_transition_speed = 0.1  # Speed of color transition (0-1)
-        self.last_color_change_time = 0
-        self.color_change_cooldown = 0.5  # Seconds to wait before allowing another color change
-            
-        print("Starting in grey mode. Waiting for RFID tags...")
-        print("  - Tags with a manifest file will use their custom color")
-        print("  - Any tag without a manifest will display in GREY")
         
         # Debug: Check which manifest files exist at startup
         print("\nChecking for manifest files in sounds directory...")
@@ -88,97 +96,31 @@ class WaveformAnimation(SampleBase):
         
         self.custom_color = None  # Store custom color from manifest
 
-    def load_all_tag_colors(self):
-        """Load color information for all tags during initialization."""
-        print("Loading color information for all tags...")
-        if not os.path.exists(self.sounds_dir):
-            print(f"Sounds directory not found: {self.sounds_dir}")
-            return
-            
-        try:
-            for tag_id in os.listdir(self.sounds_dir):
-                tag_dir = os.path.join(self.sounds_dir, tag_id)
-                if os.path.isdir(tag_dir) and tag_id.isdigit():
-                    manifest_path = os.path.join(tag_dir, "manifest.json")
-                    if os.path.exists(manifest_path):
-                        try:
-                            with open(manifest_path, 'r', encoding='utf-8') as f:
-                                manifest_content = f.read().strip()
-                                manifest = json.loads(manifest_content)
-                                if 'color' in manifest:
-                                    color = manifest['color']
-                                    if isinstance(color, list) and len(color) == 3:
-                                        # Ensure all values are integers and within range
-                                        r = max(0, min(255, int(color[0])))
-                                        g = max(0, min(255, int(color[1])))
-                                        b = max(0, min(255, int(color[2])))
-                                        self.tag_colors[tag_id] = [r, g, b]
-                                        print(f"Loaded color for tag {tag_id}: R={r}, G={g}, B={b}")
-                        except Exception as e:
-                            print(f"Error loading color for tag {tag_id}: {e}")
-        except Exception as e:
-            print(f"Error loading tag colors: {e}")
-            
-        print(f"Loaded color information for {len(self.tag_colors)} tags")
-
     def get_color_from_manifest(self, tag_id):
-        """Get color from the cached tag colors dictionary."""
+        """Get color for the given tag ID."""
         # Strip any leading/trailing whitespace from tag_id
         tag_id = tag_id.strip()
         
-        # Check if we have a cached color for this tag
+        # Check if we have a color for this tag
         if tag_id in self.tag_colors:
             color = self.tag_colors[tag_id]
-            print(f"Using cached color for tag {tag_id}: {color}")
+            print(f"Using color for tag {tag_id}: {color}")
             return color
             
-        # If not in cache, try to load it from the manifest file
-        try:
-            # Strip any leading/trailing whitespace from tag_id
-            tag_id = tag_id.strip()
-            
-            manifest_path = os.path.join(self.sounds_dir, tag_id, "manifest.json")
-            print(f"DEBUG: Looking for manifest at: {manifest_path}")
-            
-            if os.path.exists(manifest_path):
-                print(f"DEBUG: Manifest file exists for tag {tag_id}")
-                with open(manifest_path, 'r', encoding='utf-8') as f:
-                    manifest_content = f.read()
-                    print(f"DEBUG: Raw manifest content: {manifest_content}")
-                    # Try to clean the content
-                    manifest_content = manifest_content.strip()
-                    print(f"DEBUG: Cleaned manifest content: {manifest_content}")
-                    manifest = json.loads(manifest_content)
-                    if 'color' in manifest:
-                        color = manifest['color']
-                        print(f"DEBUG: Found color in manifest: {color}, type: {type(color)}")
-                        
-                        # Ensure color is in the correct format [r, g, b]
-                        if isinstance(color, list) and len(color) == 3:
-                            # Already in the correct format
-                            print(f"DEBUG: Color is in correct format: {color}")
-                            # Ensure all values are integers and within range
-                            r = max(0, min(255, int(color[0])))
-                            g = max(0, min(255, int(color[1])))
-                            b = max(0, min(255, int(color[2])))
-                            print(f"DEBUG: Returning color values: R={r}, G={g}, B={b}")
-                            
-                            # Cache the color for future use
-                            self.tag_colors[tag_id] = [r, g, b]
-                            
-                            return [r, g, b]
-            else:
-                print(f"DEBUG: Manifest file does not exist at: {manifest_path}")
-        except Exception as e:
-            print(f"DEBUG: Error in get_color_from_manifest: {e}")
-            import traceback
-            traceback.print_exc()
-        return None
+        # Return default color if tag not found
+        print(f"No color found for tag {tag_id}, using default color")
+        return self.default_color.copy()
+
+    def load_all_tag_colors(self):
+        """No longer needed since colors are hard-coded."""
+        pass
+
+    def reload_tag_colors(self):
+        """No longer needed since colors are hard-coded."""
+        pass
 
     def rfid_reader(self):
         print(f"Reading tags from pipe: {self.fifo_path}")
-        last_tag_time = 0
-        tag_cooldown = 10  # Seconds to wait before allowing another reload
         
         while True:
             try:
@@ -188,45 +130,21 @@ class WaveformAnimation(SampleBase):
                     tag_id = fifo.readline().strip()
                     if tag_id:
                         print(f"DEBUG: Read tag: '{tag_id}'")
-                        current_time = time.time()
-                        
-                        # Only reload colors if enough time has passed since the last reload
-                        if current_time - last_tag_time > tag_cooldown:
-                            print("Tag scanned, reloading tag colors...")
-                            self.reload_tag_colors()
-                            last_tag_time = current_time
                         
                         with self.lock:
                             # Set the tag_scanned flag to true once any tag is read
                             self.tag_scanned = True
                             
-                            # Try to get color from cached tag colors
-                            if tag_id in self.tag_colors:
-                                print(f"DEBUG: Using cached color for tag: '{tag_id}'")
-                                new_color = self.tag_colors[tag_id]
-                                print(f"DEBUG: Found color for tag: {new_color}")
-                                
-                                # Set the target color for smooth transition
-                                self.target_color = new_color
-                                self.last_color_change_time = time.time()
-                                print(f"DEBUG: Set target color to: {self.target_color}")
+                            # Get color for this tag
+                            new_color = self.get_color_from_manifest(tag_id)
+                            if new_color:
+                                # Set the color immediately
+                                self.current_color = new_color
+                                print(f"DEBUG: Set color to: {self.current_color}")
                             else:
-                                # If not in cache, try to load it from the manifest file
-                                custom_color = self.get_color_from_manifest(tag_id)
-                                
-                                if custom_color:
-                                    print(f"DEBUG: Using custom color from manifest: {custom_color}")
-                                    # Ensure the color values are integers
-                                    new_color = [int(c) for c in custom_color]
-                                    print(f"DEBUG: Set target color to: {new_color}")
-                                    
-                                    # Set the target color for smooth transition
-                                    self.target_color = new_color
-                                    self.last_color_change_time = time.time()
-                                else:
-                                    print(f"DEBUG: No manifest found for tag: '{tag_id}', setting to GREY")
-                                    self.target_color = [200, 200, 255]  # Slightly blue-tinted white
-                                    self.last_color_change_time = time.time()
+                                # Use default color
+                                self.current_color = self.default_color.copy()
+                                print(f"DEBUG: Using default color: {self.current_color}")
                         
                         # Forward the tag ID to the audio player
                         try:
@@ -269,15 +187,6 @@ class WaveformAnimation(SampleBase):
             except Exception as e:
                 print(f"Error reading from ready pipe: {e}")
                 time.sleep(1)  # Wait before trying to reopen the pipe
-
-    def reload_tag_colors(self):
-        """Reload color information for all tags after a sync operation."""
-        print("Reloading color information for all tags after sync...")
-        # Clear the existing color cache
-        self.tag_colors = {}
-        # Load all colors again
-        self.load_all_tag_colors()
-        print("Color reload complete")
 
     def progress_reader(self):
         """Thread function to read progress updates from the progress pipe."""
@@ -515,14 +424,6 @@ class WaveformAnimation(SampleBase):
         # Fixed brightness value for all colors
         BRIGHTNESS = 200  # Value between 0-255, where 255 is maximum brightness
         
-        # Debug flag to print color information
-        debug_colors = True
-        
-        # Track the last color state to avoid repeating debug messages
-        last_custom_color = None
-        last_color_debug_time = 0
-        color_debug_interval = 5  # Only print color debug messages every 5 seconds
-        
         # Track if we're actually updating sounds
         updating_sounds = False
         last_progress_update_time = 0
@@ -541,8 +442,6 @@ class WaveformAnimation(SampleBase):
                 show_loading = self.show_loading_message
                 loading_progress = self.loading_progress
                 loading_message = self.loading_message
-                target_color = self.target_color
-                last_color_change_time = self.last_color_change_time
             
             # Check if ready message should be hidden
             if show_ready and time.time() - ready_time > self.ready_message_duration:
@@ -559,83 +458,10 @@ class WaveformAnimation(SampleBase):
                 with self.lock:
                     self.show_loading_message = False
             
-            # Smooth color transition
-            if current_time - last_color_change_time > self.color_change_cooldown:
-                # Calculate the difference between current and target colors
-                color_diff = [
-                    target_color[0] - self.current_color[0],
-                    target_color[1] - self.current_color[1],
-                    target_color[2] - self.current_color[2]
-                ]
-                
-                # Apply the transition
-                if abs(color_diff[0]) > 1 or abs(color_diff[1]) > 1 or abs(color_diff[2]) > 1:
-                    self.current_color = [
-                        self.current_color[0] + color_diff[0] * self.color_transition_speed,
-                        self.current_color[1] + color_diff[1] * self.color_transition_speed,
-                        self.current_color[2] + color_diff[2] * self.color_transition_speed
-                    ]
-                    
-                    # Ensure values are within valid range
-                    self.current_color = [
-                        max(0, min(255, int(self.current_color[0]))),
-                        max(0, min(255, int(self.current_color[1]))),
-                        max(0, min(255, int(self.current_color[2])))
-                    ]
-                    
-                    # Print debug info occasionally
-                    if current_time - last_color_debug_time >= color_debug_interval:
-                        print(f"DEBUG: Transitioning color to: R={self.current_color[0]}, G={self.current_color[1]}, B={self.current_color[2]}")
-                        last_color_debug_time = current_time
-            
-            # Set colors based on the current color
+            # Get current color values (no transitions)
             red = self.current_color[0]
             green = self.current_color[1]
             blue = self.current_color[2]
-            
-            # Only print debug message if color has changed or enough time has passed
-            current_time = time.time()
-            if (self.current_color != last_custom_color or 
-                (current_time - last_color_debug_time) >= color_debug_interval):
-                print(f"DEBUG: Drawing waveform with color: R={red}, G={green}, B={blue}")
-                last_custom_color = self.current_color.copy()  # Make a copy to avoid reference issues
-                last_color_debug_time = current_time
-            
-            # Check if a tag has been scanned
-            if has_tag_been_scanned:
-                # Generate new wave points based on sine waves and some randomness
-                for x in range(width):
-                    # Create a smoother waveform using multiple sine waves
-                    y = height // 2
-                    y += int(wave_height * math.sin(x/7 + time_var) * 0.5)
-                    y += int(wave_height * math.sin(x/4 - time_var*0.7) * 0.3)
-                    y += int(wave_height * math.sin(x/10 + time_var*0.5) * 0.2)
-                    
-                    # Add subtle randomness for more natural soundwave look
-                    y += random.randint(-2, 2)
-                    
-                    # Keep within bounds
-                    y = max(1, min(height-2, y))
-                    wave_points[x] = y
-                
-                # Draw the waveform
-                for x in range(width):
-                    # Draw vertical lines for each point of the waveform
-                    mid_point = height // 2
-                    amplitude = wave_points[x] - mid_point
-                    
-                    # Mirror the wave to get the classic soundwave effect
-                    start_y = mid_point - abs(amplitude)
-                    end_y = mid_point + abs(amplitude)
-                    
-                    for y in range(start_y, end_y + 1):
-                        # Set the pixel with the current color
-                        offscreen_canvas.SetPixel(x, y, red, green, blue)
-            else:
-                # Before any tag is scanned, just draw a single horizontal gray line
-                mid_point = height // 2
-                for x in range(width):
-                    offscreen_canvas.SetPixel(x, mid_point, BRIGHTNESS, BRIGHTNESS, BRIGHTNESS)
             
             # Draw loading message if needed
             if show_loading:
@@ -675,6 +501,42 @@ class WaveformAnimation(SampleBase):
                 
                 # Draw the message text
                 self.draw_text(offscreen_canvas, message_text, message_x, message_y, (255, 255, 255))
+            else:
+                # Only draw waveform when not in loading state
+                if has_tag_been_scanned:
+                    # Generate new wave points based on sine waves and some randomness
+                    for x in range(width):
+                        # Create a smoother waveform using multiple sine waves
+                        y = height // 2
+                        y += int(wave_height * math.sin(x/7 + time_var) * 0.5)
+                        y += int(wave_height * math.sin(x/4 - time_var*0.7) * 0.3)
+                        y += int(wave_height * math.sin(x/10 + time_var*0.5) * 0.2)
+                        
+                        # Add subtle randomness for more natural soundwave look
+                        y += random.randint(-2, 2)
+                        
+                        # Keep within bounds
+                        y = max(1, min(height-2, y))
+                        wave_points[x] = y
+                    
+                    # Draw the waveform
+                    for x in range(width):
+                        # Draw vertical lines for each point of the waveform
+                        mid_point = height // 2
+                        amplitude = wave_points[x] - mid_point
+                        
+                        # Mirror the wave to get the classic soundwave effect
+                        start_y = mid_point - abs(amplitude)
+                        end_y = mid_point + abs(amplitude)
+                        
+                        for y in range(start_y, end_y + 1):
+                            # Set the pixel with the current color
+                            offscreen_canvas.SetPixel(x, y, red, green, blue)
+                else:
+                    # Before any tag is scanned, just draw a single horizontal gray line
+                    mid_point = height // 2
+                    for x in range(width):
+                        offscreen_canvas.SetPixel(x, mid_point, BRIGHTNESS, BRIGHTNESS, BRIGHTNESS)
             
             # Draw ready message if needed
             if show_ready:

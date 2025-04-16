@@ -232,28 +232,35 @@ def download_sound_parallel(tag_id):
     else:
         return None
 
-def sync_sounds(force_update=False):
+def sync_sounds(force_update=False, is_initial_sync=False):
     """Sync local sounds with remote server."""
     global initial_sync_completed
     
     print("Starting sound synchronization...")
     if force_update:
         print("FORCE UPDATE MODE: Will update all sounds regardless of timestamps")
-    send_progress(0, "Starting sound synchronization")
+    
+    # Only send detailed progress updates during initial sync
+    if is_initial_sync:
+        send_progress(0, "Starting sound synchronization")
     
     # Get list of remote sounds
-    send_progress(5, "Getting list of remote sounds")
+    if is_initial_sync:
+        send_progress(5, "Getting list of remote sounds")
     remote_sounds = get_remote_sounds()
     if not remote_sounds:
         print("Warning: Could not get list of remote sounds")
-        send_progress(100, "Error: Could not get list of remote sounds")
+        if is_initial_sync:
+            send_progress(100, "Error: Could not get list of remote sounds")
         return
     
     print(f"Found {len(remote_sounds)} valid sounds on remote server")
-    send_progress(10, f"Found {len(remote_sounds)} sounds on server")
+    if is_initial_sync:
+        send_progress(10, f"Found {len(remote_sounds)} sounds on server")
     
     # Get list of local sounds
-    send_progress(15, "Checking local sounds")
+    if is_initial_sync:
+        send_progress(15, "Checking local sounds")
     local_sounds = []
     try:
         for item in os.listdir(SOUNDS_BASE_DIR):
@@ -264,14 +271,17 @@ def sync_sounds(force_update=False):
                     local_sounds.append(item)
     except Exception as e:
         print(f"Error getting local sounds list: {e}")
-        send_progress(100, f"Error: {str(e)}")
+        if is_initial_sync:
+            send_progress(100, f"Error: {str(e)}")
         return
     
     print(f"Found {len(local_sounds)} valid sounds in local cache")
-    send_progress(20, f"Found {len(local_sounds)} local sounds")
+    if is_initial_sync:
+        send_progress(20, f"Found {len(local_sounds)} local sounds")
     
     # Delete sounds that no longer exist on the server
-    send_progress(25, "Checking for deleted sounds")
+    if is_initial_sync:
+        send_progress(25, "Checking for deleted sounds")
     deleted_count = 0
     for tag_id in local_sounds:
         if tag_id not in remote_sounds:
@@ -283,11 +293,12 @@ def sync_sounds(force_update=False):
             except Exception as e:
                 print(f"Error deleting local sound {tag_id}: {e}")
     
-    if deleted_count > 0:
+    if deleted_count > 0 and is_initial_sync:
         send_progress(30, f"Deleted {deleted_count} old sounds")
     
     # Download new or changed sounds
-    send_progress(35, "Checking for new or updated sounds")
+    if is_initial_sync:
+        send_progress(35, "Checking for new or updated sounds")
     total_sounds = len(remote_sounds)
     processed_sounds = 0
     new_sounds = 0
@@ -306,10 +317,16 @@ def sync_sounds(force_update=False):
             manifest_url = f"{REMOTE_SERVER}/{tag_id}/manifest.json"
             audio_url = f"{REMOTE_SERVER}/{tag_id}/audio.mp3"
             
+            # Only send detailed progress updates during initial sync
+            if is_initial_sync:
+                send_progress(35 + int(processed_sounds / total_sounds * 50), 
+                             f"Processing sound {tag_id}")
+            
             if tag_id not in local_sounds:
                 print(f"Downloading new sound {tag_id}")
-                send_progress(35 + int(processed_sounds / total_sounds * 50), 
-                             f"Downloading new sound {tag_id}")
+                if is_initial_sync:
+                    send_progress(35 + int(processed_sounds / total_sounds * 50), 
+                                 f"Downloading new sound {tag_id}")
                 futures[executor.submit(download_sound_parallel, tag_id)] = tag_id
                 new_sounds += 1
             else:
@@ -338,13 +355,15 @@ def sync_sounds(force_update=False):
                 
                 if manifest_needs_update or audio_needs_update:
                     print(f"Sound {tag_id} has changed, updating...")
-                    send_progress(35 + int(processed_sounds / total_sounds * 50), 
-                                 f"Updating sound {tag_id}")
+                    if is_initial_sync:
+                        send_progress(35 + int(processed_sounds / total_sounds * 50), 
+                                     f"Updating sound {tag_id}")
                     futures[executor.submit(download_sound_parallel, tag_id)] = tag_id
                     updated_sounds += 1
                 else:
-                    send_progress(35 + int(processed_sounds / total_sounds * 50), 
-                                 f"Sound {tag_id} is up to date")
+                    if is_initial_sync:
+                        send_progress(35 + int(processed_sounds / total_sounds * 50), 
+                                     f"Sound {tag_id} is up to date")
             
             processed_sounds += 1
         
@@ -355,24 +374,36 @@ def sync_sounds(force_update=False):
                 result = future.result()
                 if result:
                     print(f"Successfully updated sound for tag {tag_id}")
+                    if is_initial_sync:
+                        send_progress(35 + int(processed_sounds / total_sounds * 50), 
+                                     f"Successfully updated sound {tag_id}")
                 else:
                     print(f"Failed to update sound for tag {tag_id}")
+                    if is_initial_sync:
+                        send_progress(35 + int(processed_sounds / total_sounds * 50), 
+                                     f"Failed to update sound {tag_id}")
             except Exception as e:
                 print(f"Error updating sound for tag {tag_id}: {e}")
+                if is_initial_sync:
+                    send_progress(35 + int(processed_sounds / total_sounds * 50), 
+                                 f"Error updating sound {tag_id}: {str(e)}")
     
     print("Sound synchronization complete")
-    send_progress(85, "Sound synchronization complete")
+    if is_initial_sync:
+        send_progress(85, "Sound synchronization complete")
     
     # Build the audio cache after syncing
-    send_progress(90, "Building audio cache")
+    if is_initial_sync:
+        send_progress(90, "Building audio cache")
     build_audio_cache()
     
     # Mark initial sync as completed
     initial_sync_completed = True
     
     # Signal that the system is ready
-    send_progress(100, "System ready")
-    signal_ready()
+    if is_initial_sync:
+        send_progress(100, "System ready")
+        signal_ready()
 
 def build_audio_cache():
     """Build a cache of all available audio files."""
@@ -474,16 +505,22 @@ def play_sound(tag_id):
         # If not in cache and initial sync is not completed, download it
         if not initial_sync_completed:
             print(f"Tag {tag_id} not in cache, downloading during initial sync...")
+            send_progress(95, f"Downloading sound for tag {tag_id}")
             audio_path = download_sound_parallel(tag_id)
             if audio_path:
                 # Add to cache for future use
                 audio_cache[tag_id] = audio_path
+                send_progress(95, f"Successfully downloaded sound for tag {tag_id}")
+            else:
+                send_progress(95, f"Failed to download sound for tag {tag_id}")
         else:
             print(f"Tag {tag_id} not found in cache and initial sync completed. Skipping.")
+            send_progress(95, f"Tag {tag_id} not found in cache. Skipping.")
             audio_path = None
     
     if not audio_path or not os.path.exists(audio_path):
         print(f"Warning: Could not find audio file for tag {tag_id}")
+        send_progress(95, f"Warning: Could not find audio file for tag {tag_id}")
         return
     
     # Add the audio file to the queue for playback
@@ -504,8 +541,8 @@ def periodic_sync_thread():
                 break
                 
             print("Running periodic sync...")
-            # Run sync without force update
-            sync_sounds(force_update=False)
+            # Run sync without force update and without detailed progress updates
+            sync_sounds(force_update=False, is_initial_sync=False)
         except Exception as e:
             print(f"Error in periodic sync thread: {e}")
             # Sleep for a bit before retrying
@@ -573,7 +610,7 @@ def main():
     sync_thread.start()
     
     # Sync sounds on startup in a separate thread to avoid blocking
-    sync_thread = threading.Thread(target=lambda: sync_sounds(force_update=args.force_update), daemon=True)
+    sync_thread = threading.Thread(target=lambda: sync_sounds(force_update=args.force_update, is_initial_sync=True), daemon=True)
     sync_thread.start()
     
     # Print audio device information

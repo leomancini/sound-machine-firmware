@@ -115,6 +115,10 @@ class WaveformAnimation(SampleBase):
                         with self.lock:
                             # Set audio_playing to false when audio is done
                             self.audio_playing = False
+                            print("DEBUG: Audio finished playing, animation should stop")
+                            
+                            # Force reset wave points to ensure immediate transition
+                            print("DEBUG: Forcing immediate transition to flat line")
             except Exception as e:
                 print(f"Error reading from ready pipe: {e}")
                 time.sleep(1)  # Wait before trying to reopen the pipe
@@ -160,6 +164,10 @@ class WaveformAnimation(SampleBase):
             with self.lock:
                 has_tag_been_scanned = self.tag_scanned
                 audio_playing = self.audio_playing
+                
+                # Debug print to track audio_playing state
+                if not audio_playing and has_tag_been_scanned:
+                    print("DEBUG: Animation loop detected audio_playing is false")
             
             # Get current color values (no transitions)
             red = self.current_color[0]

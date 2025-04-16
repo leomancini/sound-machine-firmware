@@ -325,12 +325,13 @@ class WaveformAnimation(SampleBase):
             for j in range(y, y + height):
                 canvas.SetPixel(i, j, 0, 0, 0)  # Black background
         
-        # Then, fill the appropriate portion with red, starting from the left
+        # Since the display renders from right to left, we need to reverse our approach
         # Calculate how many pixels to fill based on progress (0-100)
         pixels_to_fill = int((width * progress) / 100)
         
-        # Fill from left to right
-        for i in range(x, x + pixels_to_fill):
+        # Fill from right to left (since that's how the display renders)
+        # Start from the right edge and move left
+        for i in range(x + width - 1, x + width - 1 - pixels_to_fill, -1):
             for j in range(y, y + height):
                 canvas.SetPixel(i, j, 255, 0, 0)  # Red color
 

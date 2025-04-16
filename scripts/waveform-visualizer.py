@@ -242,6 +242,9 @@ class WaveformAnimation(SampleBase):
         animation_start_time = 0
         animation_running = False
         
+        # Track the last tag ID to detect new tags
+        last_tag_id = None
+        
         while True:
             # Clear the canvas completely
             offscreen_canvas.Clear()
@@ -252,6 +255,7 @@ class WaveformAnimation(SampleBase):
                 has_tag_been_scanned = self.tag_scanned
                 audio_playing = self.audio_playing
                 new_tag_scanned = self.new_tag_scanned
+                current_tag_id = self.current_tag_id
                 
                 # Read the audio_just_finished flag (don't reset it here)
                 audio_finished_this_cycle = self.audio_just_finished
@@ -273,6 +277,21 @@ class WaveformAnimation(SampleBase):
                         print(f"DEBUG: Setting audio_playing to true for new tag")
                         self.audio_playing = True
                         audio_playing = True
+                
+                # Check if we have a new tag ID
+                if current_tag_id != last_tag_id and current_tag_id is not None:
+                    print(f"DEBUG: New tag ID detected: {current_tag_id}")
+                    last_tag_id = current_tag_id
+                    
+                    # Start the minimum animation duration timer
+                    animation_start_time = time.time()
+                    animation_running = True
+                    
+                    # Ensure audio_playing is true for the new tag
+                    if not audio_playing:
+                        print(f"DEBUG: Setting audio_playing to true for new tag ID")
+                        self.audio_playing = True
+                        audio_playing = True
             
             # Check if we should continue animation based on minimum duration
             current_time = time.time()
@@ -280,6 +299,9 @@ class WaveformAnimation(SampleBase):
                 # Force animation to continue for the minimum duration
                 audio_playing = True
                 print(f"DEBUG: Forcing animation to continue for minimum duration")
+            else:
+                # Animation has run for the minimum duration, we can stop it
+                animation_running = False
             
             # Only increment frame counter when audio is playing
             if audio_playing:

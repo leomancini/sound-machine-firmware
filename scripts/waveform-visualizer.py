@@ -22,6 +22,8 @@ class WaveformAnimation(SampleBase):
         self.show_loading_message = True  # Start with loading message
         self.loading_progress = 0  # Progress percentage (0-100)
         self.loading_message = "Loading sounds..."  # Current loading message
+        self.initial_loading = True  # Flag to indicate initial loading phase
+        self.initial_loading_timeout = 30  # Seconds to show initial loading screen
         
         # Use the same path as the audio player
         self.sounds_dir = "/home/fcc-005/sound-machine-firmware/sounds"
@@ -47,20 +49,20 @@ class WaveformAnimation(SampleBase):
         # Dictionary to store color information for each tag
         self.tag_colors = {
             # Bright, vibrant colors for each tag
-            "0008451145": [255, 0, 0],
-            "0008479619": [0, 255, 0],
-            "0009239271": [0, 0, 255],
-            "0009466586": [255, 255, 0],
-            "0009466587": [255, 0, 255],
-            "0009466588": [0, 255, 255],
-            "0009466589": [255, 255, 0],
-            "0009466590": [255, 0, 255],
+            "0008451145": [255, 255, 255],
+            "0008479619": [0, 0, 255],
+            "0009239271": [255, 0, 0],
+            "0009466586": [0, 0, 255],
+            "0009466587": [0, 0, 255],
+            "0009466588": [0, 0, 255],
+            "0009466589": [0, 0, 255],
+            "0009466590": [0, 0, 255],
             "0009466591": [0, 0, 255],
-            "0009466592": [255, 0, 0],
+            "0009466592": [0, 0, 255],
         }
         
         # Default color for unknown tags (slightly blue-tinted white)
-        self.default_color = [200, 200, 255]
+        self.default_color = [255, 255, 255]
         
         # Current color state (no more transitions)
         self.current_color = self.default_color.copy()
@@ -426,8 +428,9 @@ class WaveformAnimation(SampleBase):
         
         # Track if we're actually updating sounds
         updating_sounds = False
-        last_progress_update_time = 0
+        last_progress_update_time = time.time()  # Initialize to current time
         progress_timeout = 10  # Seconds to wait before assuming no sounds are being updated
+        startup_time = time.time()  # Track when we started
         
         while True:
             offscreen_canvas.Clear()
@@ -450,13 +453,25 @@ class WaveformAnimation(SampleBase):
             
             # Check if we're actually updating sounds
             current_time = time.time()
-            if "Updating sound" in loading_message:
-                updating_sounds = True
-                last_progress_update_time = current_time
-            elif current_time - last_progress_update_time > progress_timeout:
-                updating_sounds = False
-                with self.lock:
-                    self.show_loading_message = False
+            
+            # During initial loading phase, keep showing the loading screen
+            if self.initial_loading:
+                if current_time - startup_time > self.initial_loading_timeout:
+                    self.initial_loading = False
+                    print("Initial loading phase complete")
+                else:
+                    # Keep showing loading screen during initial phase
+                    with self.lock:
+                        self.show_loading_message = True
+            else:
+                # After initial phase, use normal timeout logic
+                if "Updating sound" in loading_message:
+                    updating_sounds = True
+                    last_progress_update_time = current_time
+                elif current_time - last_progress_update_time > progress_timeout:
+                    updating_sounds = False
+                    with self.lock:
+                        self.show_loading_message = False
             
             # Get current color values (no transitions)
             red = self.current_color[0]

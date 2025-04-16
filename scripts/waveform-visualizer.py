@@ -51,6 +51,27 @@ class WaveformAnimation(SampleBase):
         print("  - Tags with a manifest file will use their custom color")
         print("  - Any tag without a manifest will display in GREY")
         
+        # Debug: Check which manifest files exist at startup
+        print("\nChecking for manifest files in sounds directory...")
+        if os.path.exists(self.sounds_dir):
+            for tag_id in os.listdir(self.sounds_dir):
+                tag_dir = os.path.join(self.sounds_dir, tag_id)
+                manifest_path = os.path.join(tag_dir, "manifest.json")
+                if os.path.exists(manifest_path):
+                    try:
+                        with open(manifest_path, 'r', encoding='utf-8') as f:
+                            manifest = json.loads(f.read().strip())
+                            color = manifest.get('color', None)
+                            title = manifest.get('title', 'Unknown')
+                            print(f"Found manifest for tag {tag_id}: {title} (Color: {color})")
+                    except Exception as e:
+                        print(f"Error reading manifest for tag {tag_id}: {e}")
+                else:
+                    print(f"No manifest found for tag {tag_id}")
+        else:
+            print(f"Sounds directory not found: {self.sounds_dir}")
+        print("")  # Add a blank line after the manifest check
+        
         self.custom_color = None  # Store custom color from manifest
 
     def get_color_from_manifest(self, tag_id):
@@ -64,10 +85,13 @@ class WaveformAnimation(SampleBase):
             
             if os.path.exists(manifest_path):
                 print(f"DEBUG: Manifest file exists for tag {tag_id}")
-                with open(manifest_path, 'r') as f:
+                with open(manifest_path, 'r', encoding='utf-8') as f:
                     manifest_content = f.read()
                     print(f"DEBUG: Raw manifest content: {manifest_content}")
-                    manifest = json.load(f)
+                    # Try to clean the content
+                    manifest_content = manifest_content.strip()
+                    print(f"DEBUG: Cleaned manifest content: {manifest_content}")
+                    manifest = json.loads(manifest_content)
                     if 'color' in manifest:
                         color = manifest['color']
                         print(f"DEBUG: Found color in manifest: {color}, type: {type(color)}")
@@ -86,6 +110,8 @@ class WaveformAnimation(SampleBase):
                 print(f"DEBUG: Manifest file does not exist at: {manifest_path}")
         except Exception as e:
             print(f"DEBUG: Error in get_color_from_manifest: {e}")
+            import traceback
+            traceback.print_exc()
         return None
 
     def rfid_reader(self):
@@ -356,6 +382,11 @@ class WaveformAnimation(SampleBase):
         # Debug flag to print color information
         debug_colors = True
         
+        # Track the last color state to avoid repeating debug messages
+        last_custom_color = None
+        last_color_debug_time = 0
+        color_debug_interval = 5  # Only print color debug messages every 5 seconds
+        
         while True:
             offscreen_canvas.Clear()
             self.usleep(50 * 1000)  # Slightly slower update for smoother animation
@@ -382,13 +413,25 @@ class WaveformAnimation(SampleBase):
                 red = custom_color[0]
                 green = custom_color[1]
                 blue = custom_color[2]
-                print(f"DEBUG: Drawing waveform with color: R={red}, G={green}, B={blue}")
+                # Only print debug message if color has changed or enough time has passed
+                current_time = time.time()
+                if (custom_color != last_custom_color or 
+                    (current_time - last_color_debug_time) >= color_debug_interval):
+                    print(f"DEBUG: Drawing waveform with color: R={red}, G={green}, B={blue}")
+                    last_custom_color = custom_color.copy()  # Make a copy to avoid reference issues
+                    last_color_debug_time = current_time
             else:
                 # Fallback to grey if no custom color
                 red = BRIGHTNESS
                 green = BRIGHTNESS
                 blue = BRIGHTNESS
-                print("DEBUG: Drawing waveform in grey mode")
+                # Only print debug message if color has changed or enough time has passed
+                current_time = time.time()
+                if (last_custom_color is not None or 
+                    (current_time - last_color_debug_time) >= color_debug_interval):
+                    print("DEBUG: Drawing waveform in grey mode")
+                    last_custom_color = None
+                    last_color_debug_time = current_time
             
             # Check if a tag has been scanned
             if has_tag_been_scanned:

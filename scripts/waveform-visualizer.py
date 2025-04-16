@@ -325,8 +325,12 @@ class WaveformAnimation(SampleBase):
             elif 'amplitudes' in waveform_data and isinstance(waveform_data['amplitudes'], list):
                 bands = waveform_data['amplitudes']
         elif isinstance(waveform_data, list):
-            # If the data is a raw array, use it directly as amplitude values
-            bands = waveform_data
+            # If the data is a list of lists, use the first array
+            if waveform_data and isinstance(waveform_data[0], list):
+                bands = waveform_data[0]
+            else:
+                # If it's a single list, use it directly
+                bands = waveform_data
         
         # If we have bands data, use it to create the visualization
         if bands:
@@ -339,7 +343,8 @@ class WaveformAnimation(SampleBase):
                 x = int(i * band_width)
                 
                 # Scale the amplitude to fit the screen height
-                scaled_amplitude = int((amplitude / 255.0) * max_amplitude)  # Assuming input values are 0-255
+                # Assuming input values are in the range of 0-15 based on the data we saw
+                scaled_amplitude = int((amplitude / 15.0) * max_amplitude)
                 
                 # Draw a vertical line for this band
                 start_y = mid_point - scaled_amplitude

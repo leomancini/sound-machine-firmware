@@ -41,12 +41,52 @@ MAX_CONCURRENT_DOWNLOADS = 5
 # Flag to track if we're stopping for a new tag
 stopping_for_new_tag = False
 
-def send_progress(progress, message):
-    """Send progress update to the visualizer."""
-    # This function is no longer needed since we removed the progress bar
-    print(f"Progress: {progress}% - {message}")
+def download_sound_parallel(tag_id):
+    """Download sound files in parallel."""
+    tag_dir = os.path.join(SOUNDS_BASE_DIR, tag_id)
+    os.makedirs(tag_dir, exist_ok=True)
+    
+    manifest_path = os.path.join(tag_dir, "manifest.json")
+    audio_path = os.path.join(tag_dir, "audio.mp3")
+    manifest_url = f"{REMOTE_SERVER}/{tag_id}/manifest.json"
+    audio_url = f"{REMOTE_SERVER}/{tag_id}/audio.mp3"
+    
+    # Check if files need to be updated using hash comparison
+    manifest_needs_update = True
+    audio_needs_update = True
+    
+    # Check manifest
+    if os.path.exists(manifest_path):
+        manifest_needs_update = False
+    
+    # Check audio
+    if os.path.exists(audio_path):
+        audio_needs_update = False
+    
+    # Download files in parallel if needed
+    with ThreadPoolExecutor(max_workers=2) as executor:
+        futures = []
+        
+        if manifest_needs_update:
+            futures.append(executor.submit(lambda: download_and_save_file(manifest_url, manifest_path)))
+        
+        if audio_needs_update:
+            futures.append(executor.submit(lambda: download_and_save_file(audio_url, audio_path)))
+        
+        # Wait for all downloads to complete
+        for future in as_completed(futures):
+            try:
+                future.result()
+            except Exception as e:
+                print(f"Error in parallel download for {tag_id}: {e}")
+    
+    # Verify both files exist
+    if os.path.exists(manifest_path) and os.path.exists(audio_path):
+        return audio_path
+    else:
+        return None
 
-def download_file(url, local_path):
+def download_and_save_file(url, local_path):
     """Download a file from URL to local path with atomic write."""
     try:
         # Create temporary file path
@@ -95,51 +135,6 @@ def download_file(url, local_path):
             except:
                 pass
         return False
-
-def download_sound_parallel(tag_id):
-    """Download sound files in parallel."""
-    tag_dir = os.path.join(SOUNDS_BASE_DIR, tag_id)
-    os.makedirs(tag_dir, exist_ok=True)
-    
-    manifest_path = os.path.join(tag_dir, "manifest.json")
-    audio_path = os.path.join(tag_dir, "audio.mp3")
-    manifest_url = f"{REMOTE_SERVER}/{tag_id}/manifest.json"
-    audio_url = f"{REMOTE_SERVER}/{tag_id}/audio.mp3"
-    
-    # Check if files need to be updated using hash comparison
-    manifest_needs_update = True
-    audio_needs_update = True
-    
-    # Check manifest
-    if os.path.exists(manifest_path):
-        manifest_needs_update = False
-    
-    # Check audio
-    if os.path.exists(audio_path):
-        audio_needs_update = False
-    
-    # Download files in parallel if needed
-    with ThreadPoolExecutor(max_workers=2) as executor:
-        futures = []
-        
-        if manifest_needs_update:
-            futures.append(executor.submit(download_file, manifest_url, manifest_path))
-        
-        if audio_needs_update:
-            futures.append(executor.submit(download_file, audio_url, audio_path))
-        
-        # Wait for all downloads to complete
-        for future in as_completed(futures):
-            try:
-                future.result()
-            except Exception as e:
-                print(f"Error in parallel download for {tag_id}: {e}")
-    
-    # Verify both files exist
-    if os.path.exists(manifest_path) and os.path.exists(audio_path):
-        return audio_path
-    else:
-        return None
 
 def sync_sounds(force_update=False, is_initial_sync=False):
     """Sync local sounds with remote server."""

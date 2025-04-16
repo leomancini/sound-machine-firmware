@@ -21,7 +21,7 @@ if ! command -v screen &> /dev/null; then
         echo "Failed to install screen. Running scripts in background."
         sudo python rfid-reader.py > rfid.log 2>&1 &
         sudo python waveform-visualizer.py -m=adafruit-hat --led-rows=32 --led-cols=64 --led-slowdown-gpio=4 > visualizer.log 2>&1 &
-        sudo python audio-player.py > audio.log 2>&1 &
+        sudo python audio-player.py --force-update > audio.log 2>&1 &
         echo "Scripts are running in background. Check log files for output."
         exit 0
     fi
@@ -41,7 +41,7 @@ echo "Starting Waveform Visualizer in a screen session..."
 screen -dmS waveform-visualizer bash -c "cd $BASE_DIR && sudo python waveform-visualizer.py -m=adafruit-hat --led-rows=32 --led-cols=64 --led-slowdown-gpio=4; exec bash"
 
 echo "Starting Audio Player in a screen session..."
-screen -dmS audio-player bash -c "cd $BASE_DIR && sudo python audio-player.py; exec bash"
+screen -dmS audio-player bash -c "cd $BASE_DIR && sudo python audio-player.py --force-update; exec bash"
 
 echo "All scripts are now running in separate screen sessions."
 echo ""

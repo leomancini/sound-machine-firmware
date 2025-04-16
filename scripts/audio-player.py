@@ -10,6 +10,7 @@ import threading
 import queue
 from pathlib import Path
 from datetime import datetime
+import argparse
 
 # Configure paths
 FIFO_PATH = "/tmp/rfid_audio_pipe"
@@ -96,11 +97,13 @@ def send_progress(progress, message):
     except Exception as e:
         print(f"Error sending progress update: {e}")
 
-def sync_sounds():
+def sync_sounds(force_update=False):
     """Sync local sounds with remote server."""
     global initial_sync_completed
     
     print("Starting sound synchronization...")
+    if force_update:
+        print("FORCE UPDATE MODE: Will update all sounds regardless of timestamps")
     send_progress(0, "Starting sound synchronization")
     
     # Get list of remote sounds
@@ -178,8 +181,55 @@ def sync_sounds():
             local_manifest_time = get_local_timestamp(manifest_path)
             local_audio_time = get_local_timestamp(audio_path)
             
-            if (remote_manifest_time != local_manifest_time or 
-                remote_audio_time != local_audio_time):
+            # Check if files are actually different by comparing content
+            manifest_changed = False
+            audio_changed = False
+            
+            # For manifest, compare the actual content
+            if os.path.exists(manifest_path):
+                try:
+                    with open(manifest_path, 'r') as f:
+                        local_manifest_content = f.read().strip()
+                    
+                    response = requests.get(manifest_url)
+                    response.raise_for_status()
+                    remote_manifest_content = response.text.strip()
+                    
+                    if local_manifest_content != remote_manifest_content:
+                        manifest_changed = True
+                        print(f"Manifest content changed for {tag_id}")
+                except Exception as e:
+                    print(f"Error comparing manifest content for {tag_id}: {e}")
+                    # If we can't compare content, fall back to timestamp comparison
+                    manifest_changed = (remote_manifest_time != local_manifest_time)
+            else:
+                manifest_changed = True
+            
+            # For audio, compare file sizes as a quick check
+            if os.path.exists(audio_path):
+                try:
+                    local_audio_size = os.path.getsize(audio_path)
+                    response = requests.head(audio_url)
+                    response.raise_for_status()
+                    remote_audio_size = int(response.headers.get('content-length', 0))
+                    
+                    if local_audio_size != remote_audio_size:
+                        audio_changed = True
+                        print(f"Audio file size changed for {tag_id}: local={local_audio_size}, remote={remote_audio_size}")
+                except Exception as e:
+                    print(f"Error comparing audio size for {tag_id}: {e}")
+                    # If we can't compare size, fall back to timestamp comparison
+                    audio_changed = (remote_audio_time != local_audio_time)
+            else:
+                audio_changed = True
+            
+            # If force update is enabled, always update
+            if force_update:
+                manifest_changed = True
+                audio_changed = True
+                print(f"Force update enabled for {tag_id}")
+            
+            if manifest_changed or audio_changed:
                 print(f"Sound {tag_id} has changed, updating...")
                 send_progress(35 + int(processed_sounds / total_sounds * 50), 
                              f"Updating sound {tag_id}")
@@ -224,19 +274,31 @@ def download_sound(tag_id):
     manifest_url = f"{REMOTE_SERVER}/{tag_id}/manifest.json"
     audio_url = f"{REMOTE_SERVER}/{tag_id}/audio.mp3"
     
+    print(f"Downloading sound for tag {tag_id}")
+    print(f"  - Manifest URL: {manifest_url}")
+    print(f"  - Audio URL: {audio_url}")
+    print(f"  - Local manifest path: {manifest_path}")
+    print(f"  - Local audio path: {audio_path}")
+    
     # Get remote timestamps
     remote_manifest_time = get_remote_timestamp(manifest_url)
     remote_audio_time = get_remote_timestamp(audio_url)
+    
+    print(f"  - Remote manifest timestamp: {remote_manifest_time}")
+    print(f"  - Remote audio timestamp: {remote_audio_time}")
     
     # Get local timestamps
     local_manifest_time = get_local_timestamp(manifest_path)
     local_audio_time = get_local_timestamp(audio_path)
     
+    print(f"  - Local manifest timestamp: {local_manifest_time}")
+    print(f"  - Local audio timestamp: {local_audio_time}")
+    
     # Download only changed files
     try:
         # Download manifest if changed or doesn't exist
         if remote_manifest_time != local_manifest_time or not os.path.exists(manifest_path):
-            print(f"Updating manifest for {tag_id}")
+            print(f"  - Updating manifest for {tag_id}")
             response = requests.get(manifest_url)
             response.raise_for_status()
             
@@ -244,12 +306,31 @@ def download_sound(tag_id):
             temp_manifest = f"{manifest_path}.tmp"
             with open(temp_manifest, 'w') as f:
                 f.write(response.text)
+            
+            # Verify the temp file was created and has content
+            if not os.path.exists(temp_manifest):
+                raise Exception(f"Failed to create temporary manifest file: {temp_manifest}")
+            
+            temp_size = os.path.getsize(temp_manifest)
+            if temp_size == 0:
+                raise Exception(f"Temporary manifest file is empty: {temp_manifest}")
+            
+            print(f"  - Temporary manifest file created: {temp_manifest} ({temp_size} bytes)")
+            
             # Atomic rename
             os.rename(temp_manifest, manifest_path)
             
+            # Verify the file was renamed successfully
+            if not os.path.exists(manifest_path):
+                raise Exception(f"Failed to rename manifest file: {manifest_path}")
+            
+            print(f"  - Manifest file saved: {manifest_path}")
+        else:
+            print(f"  - Manifest file is up to date: {manifest_path}")
+            
         # Download audio if changed or doesn't exist
         if remote_audio_time != local_audio_time or not os.path.exists(audio_path):
-            print(f"Updating audio for {tag_id}")
+            print(f"  - Updating audio for {tag_id}")
             response = requests.get(audio_url)
             response.raise_for_status()
             
@@ -257,14 +338,50 @@ def download_sound(tag_id):
             temp_audio = f"{audio_path}.tmp"
             with open(temp_audio, 'wb') as f:
                 f.write(response.content)
+            
+            # Verify the temp file was created and has content
+            if not os.path.exists(temp_audio):
+                raise Exception(f"Failed to create temporary audio file: {temp_audio}")
+            
+            temp_size = os.path.getsize(temp_audio)
+            if temp_size == 0:
+                raise Exception(f"Temporary audio file is empty: {temp_audio}")
+            
+            print(f"  - Temporary audio file created: {temp_audio} ({temp_size} bytes)")
+            
             # Atomic rename
             os.rename(temp_audio, audio_path)
             
+            # Verify the file was renamed successfully
+            if not os.path.exists(audio_path):
+                raise Exception(f"Failed to rename audio file: {audio_path}")
+            
+            print(f"  - Audio file saved: {audio_path}")
+        else:
+            print(f"  - Audio file is up to date: {audio_path}")
+            
+        # Final verification that both files exist
+        if not os.path.exists(manifest_path):
+            raise Exception(f"Manifest file does not exist after download: {manifest_path}")
+        
+        if not os.path.exists(audio_path):
+            raise Exception(f"Audio file does not exist after download: {audio_path}")
+        
         print(f"Successfully updated sound for tag {tag_id}")
         return audio_path
         
     except requests.exceptions.RequestException as e:
         print(f"Error downloading sound for tag {tag_id}: {e}")
+        # Clean up any temporary files
+        for temp_file in [f"{manifest_path}.tmp", f"{audio_path}.tmp"]:
+            if os.path.exists(temp_file):
+                try:
+                    os.remove(temp_file)
+                except:
+                    pass
+        return None
+    except Exception as e:
+        print(f"Error processing sound for tag {tag_id}: {e}")
         # Clean up any temporary files
         for temp_file in [f"{manifest_path}.tmp", f"{audio_path}.tmp"]:
             if os.path.exists(temp_file):
@@ -404,6 +521,11 @@ def cleanup(*args):
 def main():
     global running
     
+    # Parse command line arguments
+    parser = argparse.ArgumentParser(description='Audio player for sound machine')
+    parser.add_argument('--force-update', action='store_true', help='Force update all sounds regardless of timestamps')
+    args = parser.parse_args()
+    
     # Set up signal handlers for clean exit
     signal.signal(signal.SIGINT, cleanup)
     signal.signal(signal.SIGTERM, cleanup)
@@ -423,7 +545,7 @@ def main():
     # 3. Download new sounds that don't exist locally
     # 4. Update sounds that have changed on the server
     # 5. Build the audio cache
-    sync_sounds()
+    sync_sounds(force_update=args.force_update)
     
     # Print audio device information
     print("\nDetected audio devices:")

@@ -46,6 +46,12 @@ class WaveformAnimation(SampleBase):
             
         # Flag to indicate whether a tag has been scanned
         self.tag_scanned = False
+        
+        # Dictionary to store color information for each tag
+        self.tag_colors = {}
+        
+        # Load all color information during initialization
+        self.load_all_tag_colors()
             
         print("Starting in grey mode. Waiting for RFID tags...")
         print("  - Tags with a manifest file will use their custom color")
@@ -74,8 +80,51 @@ class WaveformAnimation(SampleBase):
         
         self.custom_color = None  # Store custom color from manifest
 
+    def load_all_tag_colors(self):
+        """Load color information for all tags during initialization."""
+        print("Loading color information for all tags...")
+        if not os.path.exists(self.sounds_dir):
+            print(f"Sounds directory not found: {self.sounds_dir}")
+            return
+            
+        try:
+            for tag_id in os.listdir(self.sounds_dir):
+                tag_dir = os.path.join(self.sounds_dir, tag_id)
+                if os.path.isdir(tag_dir) and tag_id.isdigit():
+                    manifest_path = os.path.join(tag_dir, "manifest.json")
+                    if os.path.exists(manifest_path):
+                        try:
+                            with open(manifest_path, 'r', encoding='utf-8') as f:
+                                manifest_content = f.read().strip()
+                                manifest = json.loads(manifest_content)
+                                if 'color' in manifest:
+                                    color = manifest['color']
+                                    if isinstance(color, list) and len(color) == 3:
+                                        # Ensure all values are integers and within range
+                                        r = max(0, min(255, int(color[0])))
+                                        g = max(0, min(255, int(color[1])))
+                                        b = max(0, min(255, int(color[2])))
+                                        self.tag_colors[tag_id] = [r, g, b]
+                                        print(f"Loaded color for tag {tag_id}: R={r}, G={g}, B={b}")
+                        except Exception as e:
+                            print(f"Error loading color for tag {tag_id}: {e}")
+        except Exception as e:
+            print(f"Error loading tag colors: {e}")
+            
+        print(f"Loaded color information for {len(self.tag_colors)} tags")
+
     def get_color_from_manifest(self, tag_id):
-        """Read the manifest file for a given tag ID and return the color."""
+        """Get color from the cached tag colors dictionary."""
+        # Strip any leading/trailing whitespace from tag_id
+        tag_id = tag_id.strip()
+        
+        # Check if we have a cached color for this tag
+        if tag_id in self.tag_colors:
+            color = self.tag_colors[tag_id]
+            print(f"Using cached color for tag {tag_id}: {color}")
+            return color
+            
+        # If not in cache, try to load it from the manifest file
         try:
             # Strip any leading/trailing whitespace from tag_id
             tag_id = tag_id.strip()
@@ -105,6 +154,10 @@ class WaveformAnimation(SampleBase):
                             g = max(0, min(255, int(color[1])))
                             b = max(0, min(255, int(color[2])))
                             print(f"DEBUG: Returning color values: R={r}, G={g}, B={b}")
+                            
+                            # Cache the color for future use
+                            self.tag_colors[tag_id] = [r, g, b]
+                            
                             return [r, g, b]
             else:
                 print(f"DEBUG: Manifest file does not exist at: {manifest_path}")
@@ -129,17 +182,23 @@ class WaveformAnimation(SampleBase):
                             # Set the tag_scanned flag to true once any tag is read
                             self.tag_scanned = True
                             
-                            # Try to get color from manifest
-                            custom_color = self.get_color_from_manifest(tag_id)
-                            
-                            if custom_color:
-                                print(f"DEBUG: Using custom color from manifest: {custom_color}")
-                                # Ensure the color values are integers
-                                self.custom_color = [int(c) for c in custom_color]
+                            # Try to get color from cached tag colors
+                            if tag_id in self.tag_colors:
+                                print(f"DEBUG: Using cached color for tag: '{tag_id}'")
+                                self.custom_color = self.tag_colors[tag_id]
                                 print(f"DEBUG: Set custom color to: {self.custom_color}")
                             else:
-                                print(f"DEBUG: No manifest found for tag: '{tag_id}', setting to GREY")
-                                self.custom_color = None
+                                # If not in cache, try to load it from the manifest file
+                                custom_color = self.get_color_from_manifest(tag_id)
+                                
+                                if custom_color:
+                                    print(f"DEBUG: Using custom color from manifest: {custom_color}")
+                                    # Ensure the color values are integers
+                                    self.custom_color = [int(c) for c in custom_color]
+                                    print(f"DEBUG: Set custom color to: {self.custom_color}")
+                                else:
+                                    print(f"DEBUG: No manifest found for tag: '{tag_id}', setting to GREY")
+                                    self.custom_color = None
                         
                         # Forward the tag ID to the audio player
                         try:

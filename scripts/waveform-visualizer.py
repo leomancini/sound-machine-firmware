@@ -327,9 +327,9 @@ class WaveformAnimation(SampleBase):
         elif isinstance(waveform_data, list):
             # If the data is a list of lists, cycle through the frames
             if waveform_data and isinstance(waveform_data[0], list):
-                # Use time_var to cycle through frames
-                # Convert time_var to an integer index that cycles through the available frames
-                frame_index = int(time_var) % len(waveform_data)
+                # Use time_var to cycle through frames much faster
+                # Multiply time_var by 50 to speed up the animation significantly
+                frame_index = int(time_var * 50) % len(waveform_data)
                 bands = waveform_data[frame_index]
             else:
                 # If it's a single list, use it directly

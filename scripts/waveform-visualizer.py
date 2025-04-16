@@ -55,6 +55,9 @@ class WaveformAnimation(SampleBase):
 
         # Flag to indicate audio finished naturally
         self.audio_just_finished = False
+        
+        # Current tag ID being played
+        self.current_tag_id = None
 
     def build_waveform_cache(self):
         """Build a cache of all available waveform.json files."""
@@ -108,6 +111,9 @@ class WaveformAnimation(SampleBase):
                             
                             # Set new_tag_scanned flag to true
                             self.new_tag_scanned = True
+
+                            # Store the current tag ID
+                            self.current_tag_id = tag_id
 
                             # Reset audio_just_finished flag for new tag
                             self.audio_just_finished = False
@@ -216,6 +222,7 @@ class WaveformAnimation(SampleBase):
                 has_tag_been_scanned = self.tag_scanned
                 audio_playing = self.audio_playing
                 new_tag_scanned = self.new_tag_scanned
+                current_tag_id = self.current_tag_id
                 
                 # Read the audio_just_finished flag (don't reset it here)
                 audio_finished_this_cycle = self.audio_just_finished
@@ -242,33 +249,86 @@ class WaveformAnimation(SampleBase):
             
             # Only draw waveform when audio is playing
             if has_tag_been_scanned and audio_playing:
-                # Generate new wave points based on sine waves and some randomness
-                for x in range(width):
-                    # Create a smoother waveform using multiple sine waves
-                    y = height // 2
-                    y += int(wave_height * math.sin(x/7 + time_var) * 0.5)
-                    y += int(wave_height * math.sin(x/4 - time_var*0.7) * 0.3)
-                    y += int(wave_height * math.sin(x/10 + time_var*0.5) * 0.2)
+                # Check if we have waveform data for the current tag
+                if current_tag_id and current_tag_id in self.waveform_cache:
+                    waveform_data = self.waveform_cache[current_tag_id]
                     
-                    # Add subtle randomness for more natural soundwave look
-                    y += random.randint(-2, 2)
+                    # Calculate how many bands we have in the waveform data
+                    if isinstance(waveform_data, list):
+                        num_bands = len(waveform_data)
+                    elif isinstance(waveform_data, dict) and 'bands' in waveform_data:
+                        num_bands = len(waveform_data['bands'])
+                    else:
+                        # Fallback to synthetic waveform if data format is unexpected
+                        num_bands = width
                     
-                    # Keep within bounds
-                    y = max(1, min(height-2, y))
-                    wave_points[x] = y
-                
-                # Draw the waveform
-                for x in range(width):
-                    # Draw vertical lines for each point of the waveform
-                    mid_point = height // 2
-                    amplitude = wave_points[x] - mid_point
+                    # Calculate width of each band to fill screen
+                    band_width = width / num_bands
                     
-                    # Mirror the wave to get the classic soundwave effect
-                    start_y = mid_point - abs(amplitude)
-                    end_y = mid_point + abs(amplitude)
+                    # Draw frequency bands
+                    for i in range(num_bands):
+                        # Get amplitude from waveform data
+                        if isinstance(waveform_data, list):
+                            amplitude = waveform_data[i]
+                        elif isinstance(waveform_data, dict) and 'bands' in waveform_data:
+                            amplitude = waveform_data['bands'][i]
+                        else:
+                            # Fallback to synthetic waveform
+                            amplitude = 0
+                        
+                        # Normalize amplitude to 0-1 range (assuming max amplitude of 15.0)
+                        normalized_amplitude = amplitude / 15.0
+                        # Then scale to appropriate display height (using most of our height)
+                        scaled_amplitude = normalized_amplitude * (height // 2 - 1)  # Leave 1px margin
+                        
+                        # Calculate x position and width for this band
+                        x = int(i * band_width)
+                        rect_width = max(1, int(band_width))  # Ensure minimum width of 1 pixel
+                        
+                        # Calculate wave points
+                        mid_point = height // 2
+                        
+                        # Mirror the wave to get the classic soundwave effect
+                        start_y = int(mid_point - scaled_amplitude)
+                        end_y = int(mid_point + scaled_amplitude)
+                        
+                        # Keep within bounds with minimal margins
+                        start_y = max(1, start_y)
+                        end_y = min(height - 2, end_y)
+                        
+                        # Draw vertical lines for this frequency band
+                        for y in range(start_y, end_y + 1):
+                            for x_pos in range(x, min(x + rect_width, width)):
+                                offscreen_canvas.SetPixel(x_pos, y, 255, 0, 0)
+                else:
+                    # Fallback to synthetic waveform if no data available
+                    # Generate new wave points based on sine waves and some randomness
+                    for x in range(width):
+                        # Create a smoother waveform using multiple sine waves
+                        y = height // 2
+                        y += int(wave_height * math.sin(x/7 + time_var) * 0.5)
+                        y += int(wave_height * math.sin(x/4 - time_var*0.7) * 0.3)
+                        y += int(wave_height * math.sin(x/10 + time_var*0.5) * 0.2)
+                        
+                        # Add subtle randomness for more natural soundwave look
+                        y += random.randint(-2, 2)
+                        
+                        # Keep within bounds
+                        y = max(1, min(height-2, y))
+                        wave_points[x] = y
                     
-                    for y in range(start_y, end_y + 1):
-                        offscreen_canvas.SetPixel(x, y, 255, 0, 0)
+                    # Draw the waveform
+                    for x in range(width):
+                        # Draw vertical lines for each point of the waveform
+                        mid_point = height // 2
+                        amplitude = wave_points[x] - mid_point
+                        
+                        # Mirror the wave to get the classic soundwave effect
+                        start_y = mid_point - abs(amplitude)
+                        end_y = mid_point + abs(amplitude)
+                        
+                        for y in range(start_y, end_y + 1):
+                            offscreen_canvas.SetPixel(x, y, 255, 0, 0)
             else:
                 # Immediately reset wave points to a flat line when audio stops
                 for x in range(width):

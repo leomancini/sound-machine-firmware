@@ -417,15 +417,15 @@ class WaveformAnimation(SampleBase):
             
             # Draw loading message if needed
             if show_loading:
-                # Draw the progress bar
-                bar_width = width - 10  # Leave some margin
-                bar_height = 4
-                bar_x = 5
-                bar_y = 16  # Fixed position for 64x32 matrix
+                # Draw the progress bar - full screen (64x32)
+                bar_width = width  # Full width
+                bar_height = height  # Full height
+                bar_x = 0  # Start from left edge
+                bar_y = 0  # Start from top edge
                 
-                # Draw the progress bar
+                # Draw the progress bar with red color
                 self.draw_progress_bar(offscreen_canvas, bar_x, bar_y, bar_width, bar_height, 
-                                      loading_progress, (255, 255, 255))
+                                      loading_progress, (255, 0, 0))  # Red color
             else:
                 # Only draw waveform when not in loading state and not showing READY message
                 if has_tag_been_scanned and not show_ready:

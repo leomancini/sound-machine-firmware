@@ -41,7 +41,7 @@ class WaveformAnimation(SampleBase):
         self.audio_start_time = 0
         self.current_audio_duration = 0  # Duration in seconds of current audio
         self.frames_per_second = 30  # Visualization frame rate
-        self.audio_startup_delay = 0.3  # Delay to account for audio loading time (300ms)
+        self.current_waveform_fps = 30.0  # Frame rate of current waveform data
         
         # Build the initial waveform cache
         self.build_waveform_cache()
@@ -168,16 +168,26 @@ class WaveformAnimation(SampleBase):
                             self.frame_counter = 0
                             self.audio_position = 0
                             self.audio_frame_count = 0
-                            self.audio_start_time = time.time()  # Set the start time for timing calculations
+                            # Set timing for audio synchronization
+                            self.audio_start_time = time.time()
+                            print(f"DEBUG: RFID reader set audio_start_time")
                             
                             # Prepare the waveform data for the visualizer
                             if tag_id in self.waveform_cache:
                                 self.current_waveform_data = self.waveform_cache[tag_id]
                                 self.current_tag_id = tag_id
                                 
-                                # Set the current audio duration
+                                # Set the current audio duration and calculate waveform FPS
                                 self.current_audio_duration = self.audio_duration_cache.get(tag_id, 30.0)
-                                print(f"Prepared waveform data for tag {tag_id}, duration: {self.current_audio_duration:.2f}s")
+                                
+                                # Calculate the natural frame rate of the waveform data
+                                if isinstance(self.current_waveform_data, list) and len(self.current_waveform_data) > 0:
+                                    waveform_frames = len(self.current_waveform_data)
+                                    self.current_waveform_fps = waveform_frames / self.current_audio_duration
+                                    print(f"Prepared waveform for tag {tag_id}: {waveform_frames} frames, {self.current_audio_duration:.2f}s, {self.current_waveform_fps:.2f} FPS")
+                                else:
+                                    self.current_waveform_fps = 30.0
+                                    print(f"Prepared waveform data for tag {tag_id}, duration: {self.current_audio_duration:.2f}s")
                                 
                                 # Verify that the waveform data is valid
                                 if self.current_waveform_data is None or (isinstance(self.current_waveform_data, list) and len(self.current_waveform_data) == 0):
@@ -332,10 +342,8 @@ class WaveformAnimation(SampleBase):
                     extended_after_audio_finished = False
                     force_animation = False
                     
-                    # Reset the audio start time to account for the new track starting
-                    # This helps handle track transitions more cleanly
-                    self.audio_start_time = time.time()
-                    print(f"DEBUG: Reset audio_start_time for new tag transition (with {self.audio_startup_delay}s delay)")
+                    # Don't reset audio_start_time here - it's already been set by the RFID reader
+                    print(f"DEBUG: New tag transition handled, audio_start_time was set by RFID reader")
                     
                     # Ensure audio_playing is true when a new tag is scanned
                     if not audio_playing:
@@ -357,9 +365,8 @@ class WaveformAnimation(SampleBase):
                     extended_after_audio_finished = False
                     force_animation = False
                     
-                    # Reset the audio start time for the new tag
-                    self.audio_start_time = time.time()
-                    print(f"DEBUG: Reset audio_start_time for new tag ID: {current_tag_id} (with {self.audio_startup_delay}s delay)")
+                    # Don't reset audio_start_time here either - rely on RFID reader timing
+                    print(f"DEBUG: New tag ID {current_tag_id} handled, using RFID reader timing")
                     
                     # Ensure audio_playing is true for the new tag
                     if not audio_playing:
@@ -476,29 +483,21 @@ class WaveformAnimation(SampleBase):
                 print("DEBUG: Waveform data is an empty list, falling back to default visualization")
                 return
                 
-            # Calculate elapsed time since audio started (accounting for startup delay)
+            # Calculate elapsed time since audio started
             current_time = time.time()
-            elapsed_time = current_time - self.audio_start_time - self.audio_startup_delay
+            elapsed_time = current_time - self.audio_start_time
             
-            # Don't start progressing until after the startup delay
-            if elapsed_time < 0:
-                elapsed_time = 0
+            # Calculate frame index using the natural waveform frame rate
+            # This should be more accurate than trying to sync to audio duration
+            frame_index = int(elapsed_time * self.current_waveform_fps)
             
-            # Calculate frame index based on elapsed time and audio duration
-            if self.current_audio_duration > 0:
-                # Calculate progress through the audio (0.0 to 1.0)
-                audio_progress = min(elapsed_time / self.current_audio_duration, 1.0)
-                frame_index = int(audio_progress * total_frames)
-                
-                # Make sure we don't exceed the available frames
-                frame_index = min(frame_index, total_frames - 1)
-                
-                # Debug output for troubleshooting
-                if frame_index == 0 or frame_index % 100 == 0 or audio_progress >= 1.0:
-                    print(f"DEBUG: Sync check - elapsed: {elapsed_time:.2f}s, progress: {audio_progress:.3f}, frame: {frame_index}/{total_frames}")
-            else:
-                # Fallback to old method if no duration available
-                frame_index = int((time_var / self.frames_per_second) * total_frames) % total_frames
+            # Make sure we don't exceed the available frames
+            frame_index = min(frame_index, total_frames - 1)
+            
+            # Debug output for troubleshooting (reduced frequency)
+            if frame_index % 200 == 0 or frame_index >= total_frames - 1:
+                progress = frame_index / total_frames if total_frames > 0 else 0
+                print(f"DEBUG: Waveform sync - elapsed: {elapsed_time:.2f}s, FPS: {self.current_waveform_fps:.2f}, frame: {frame_index}/{total_frames} ({progress:.3f})")
             
             # Get the bands for the current frame
             bands = waveform_data[frame_index]

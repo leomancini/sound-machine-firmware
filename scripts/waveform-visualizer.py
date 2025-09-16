@@ -6,6 +6,7 @@ import threading
 import time
 import os
 import json
+import subprocess
 
 SOUNDS_BASE_DIR = "/home/fcc-005/sound-machine-firmware/sounds"  # Base directory for sounds
 
@@ -26,6 +27,9 @@ class WaveformAnimation(SampleBase):
         # Cache for waveform data
         self.waveform_cache = {}
         
+        # Cache for audio durations (in seconds)
+        self.audio_duration_cache = {}
+        
         # Current active waveform data
         self.current_waveform_data = None
         self.current_tag_id = None
@@ -35,8 +39,8 @@ class WaveformAnimation(SampleBase):
         
         # Audio sync variables
         self.audio_start_time = 0
-        self.audio_duration = 0  # Duration in seconds
-        self.frames_per_second = 30  # Increased from 15 to 30 for better sync
+        self.current_audio_duration = 0  # Duration in seconds of current audio
+        self.frames_per_second = 30  # Visualization frame rate
         
         # Build the initial waveform cache
         self.build_waveform_cache()
@@ -73,6 +77,23 @@ class WaveformAnimation(SampleBase):
         self.audio_position = 0
         self.audio_frame_count = 0
 
+    def get_audio_duration(self, audio_path):
+        """Get the duration of an audio file in seconds using ffprobe."""
+        try:
+            result = subprocess.run([
+                'ffprobe', '-v', 'quiet', '-show_entries', 'format=duration',
+                '-of', 'default=noprint_wrappers=1:nokey=1', audio_path
+            ], capture_output=True, text=True, timeout=10)
+            
+            if result.returncode == 0 and result.stdout.strip():
+                return float(result.stdout.strip())
+            else:
+                print(f"Warning: Could not get duration for {audio_path}")
+                return 30.0  # Default fallback duration
+        except Exception as e:
+            print(f"Error getting duration for {audio_path}: {e}")
+            return 30.0  # Default fallback duration
+
     def build_waveform_cache(self):
         """Build a cache of all available waveform.json files."""
         print("Building waveform cache...")
@@ -80,12 +101,21 @@ class WaveformAnimation(SampleBase):
             for item in os.listdir(self.sounds_base_dir):
                 if os.path.isdir(os.path.join(self.sounds_base_dir, item)) and item.isdigit():
                     waveform_path = os.path.join(self.sounds_base_dir, item, "waveform.json")
+                    audio_path = os.path.join(self.sounds_base_dir, item, "audio.mp3")
+                    
                     if os.path.exists(waveform_path):
                         try:
                             with open(waveform_path, 'r') as f:
                                 waveform_data = json.load(f)
                                 self.waveform_cache[item] = waveform_data
                                 print(f"Cached waveform for tag {item}: {waveform_path}")
+                                
+                                # Cache audio duration
+                                if os.path.exists(audio_path):
+                                    duration = self.get_audio_duration(audio_path)
+                                    self.audio_duration_cache[item] = duration
+                                    print(f"Cached audio duration for tag {item}: {duration:.2f}s")
+                                
                                 # Print a preview of the data structure
                                 print(f"Data preview for tag {item}:")
                                 if isinstance(waveform_data, dict):
@@ -95,6 +125,7 @@ class WaveformAnimation(SampleBase):
                                     print(f"  - List with {len(waveform_data)} elements")
                                     if waveform_data:
                                         print(f"  - First element type: {type(waveform_data[0])}")
+                                        print(f"  - Frames count: {len(waveform_data)}, Bands per frame: {len(waveform_data[0]) if waveform_data[0] else 0}")
                                 else:
                                     print(f"  - Unexpected data type: {type(waveform_data)}")
                         except Exception as e:
@@ -136,12 +167,16 @@ class WaveformAnimation(SampleBase):
                             self.frame_counter = 0
                             self.audio_position = 0
                             self.audio_frame_count = 0
+                            self.audio_start_time = time.time()  # Set the start time for timing calculations
                             
                             # Prepare the waveform data for the visualizer
                             if tag_id in self.waveform_cache:
                                 self.current_waveform_data = self.waveform_cache[tag_id]
                                 self.current_tag_id = tag_id
-                                print(f"Prepared waveform data for tag {tag_id}")
+                                
+                                # Set the current audio duration
+                                self.current_audio_duration = self.audio_duration_cache.get(tag_id, 30.0)
+                                print(f"Prepared waveform data for tag {tag_id}, duration: {self.current_audio_duration:.2f}s")
                                 
                                 # Verify that the waveform data is valid
                                 if self.current_waveform_data is None or (isinstance(self.current_waveform_data, list) and len(self.current_waveform_data) == 0):
@@ -422,9 +457,7 @@ class WaveformAnimation(SampleBase):
         # Extract frequency bands from waveform data if available
         bands = []
 
-        # Use time_var to cycle through frames at a slower rate
-        # Adjust the frame rate to match audio playback
-        # Calculate the frame index based on the current time and audio position
+        # Calculate frame index based on actual audio elapsed time, not visualization frame counter
         if isinstance(waveform_data, list) and waveform_data:
             # Calculate how many frames we have in total
             total_frames = len(waveform_data)
@@ -433,15 +466,27 @@ class WaveformAnimation(SampleBase):
                 print("DEBUG: Waveform data is an empty list, falling back to default visualization")
                 return
                 
-            # Calculate the current frame based on time_var and audio position
-            # This helps synchronize the visualization with the audio
-            frame_index = int((time_var / self.frames_per_second) * total_frames) % total_frames
+            # Calculate elapsed time since audio started
+            current_time = time.time()
+            elapsed_time = current_time - self.audio_start_time
+            
+            # Calculate frame index based on elapsed time and audio duration
+            if self.current_audio_duration > 0:
+                # Calculate progress through the audio (0.0 to 1.0)
+                audio_progress = min(elapsed_time / self.current_audio_duration, 1.0)
+                frame_index = int(audio_progress * total_frames)
+                
+                # Make sure we don't exceed the available frames
+                frame_index = min(frame_index, total_frames - 1)
+            else:
+                # Fallback to old method if no duration available
+                frame_index = int((time_var / self.frames_per_second) * total_frames) % total_frames
             
             # Get the bands for the current frame
             bands = waveform_data[frame_index]
             
             # Update audio position tracking
-            self.audio_position = frame_index / total_frames
+            self.audio_position = frame_index / total_frames if total_frames > 0 else 0
             self.audio_frame_count = frame_index
         
         # If we have bands data, use it to create the visualization

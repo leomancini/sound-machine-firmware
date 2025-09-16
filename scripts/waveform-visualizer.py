@@ -380,24 +380,37 @@ class WaveformAnimation(SampleBase):
             # Determine if we should continue the animation
             should_continue_animation = False
             
+            # Check if waveform is still progressing (most important check)
+            waveform_complete = False
+            if hasattr(self, 'current_waveform_data') and self.current_waveform_data:
+                elapsed_time = current_time - self.audio_start_time
+                if hasattr(self, 'current_waveform_fps') and self.current_waveform_fps > 0:
+                    current_frame = int(elapsed_time * self.current_waveform_fps)
+                    total_frames = len(self.current_waveform_data) if isinstance(self.current_waveform_data, list) else 0
+                    waveform_complete = current_frame >= total_frames - 1 if total_frames > 0 else True
+            
             # Continue if we're in the minimum animation duration period
             if animation_running and (current_time - animation_start_time < min_animation_duration):
                 should_continue_animation = True
                 print(f"DEBUG: Forcing animation to continue for minimum duration")
+            # Continue if waveform is not complete yet (this is the key fix!)
+            elif not waveform_complete and has_tag_been_scanned:
+                should_continue_animation = True
+                if audio_playing != True:  # Only print when audio stopped but waveform continues
+                    print(f"DEBUG: Continuing animation until waveform complete (audio stopped early)")
             # Continue if audio is still playing
             elif audio_playing:
                 should_continue_animation = True
                 print(f"DEBUG: Continuing animation because audio is still playing")
-            # Remove the force_animation condition to stop animation immediately when audio finishes
             else:
-                # Animation has run for the minimum duration and audio is not playing
+                # Animation has run for the minimum duration and waveform is complete
                 animation_running = False
                 force_animation = False
                 
                 # If we've extended the animation after audio finished, we can reset the audio_finished flag
                 if audio_finished and (current_time - audio_finished_time >= min_animation_duration):
                     audio_finished = False
-                    print(f"DEBUG: Stopping animation after minimum duration since audio finished")
+                    print(f"DEBUG: Stopping animation - waveform complete and minimum duration met")
             
             # Set audio_playing based on our decision
             if should_continue_animation:

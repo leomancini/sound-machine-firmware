@@ -41,6 +41,7 @@ class WaveformAnimation(SampleBase):
         self.audio_start_time = 0
         self.current_audio_duration = 0  # Duration in seconds of current audio
         self.frames_per_second = 30  # Visualization frame rate
+        self.audio_startup_delay = 0.3  # Delay to account for audio loading time (300ms)
         
         # Build the initial waveform cache
         self.build_waveform_cache()
@@ -331,6 +332,11 @@ class WaveformAnimation(SampleBase):
                     extended_after_audio_finished = False
                     force_animation = False
                     
+                    # Reset the audio start time to account for the new track starting
+                    # This helps handle track transitions more cleanly
+                    self.audio_start_time = time.time()
+                    print(f"DEBUG: Reset audio_start_time for new tag transition (with {self.audio_startup_delay}s delay)")
+                    
                     # Ensure audio_playing is true when a new tag is scanned
                     if not audio_playing:
                         print(f"DEBUG: Setting audio_playing to true for new tag")
@@ -350,6 +356,10 @@ class WaveformAnimation(SampleBase):
                     audio_finished = False
                     extended_after_audio_finished = False
                     force_animation = False
+                    
+                    # Reset the audio start time for the new tag
+                    self.audio_start_time = time.time()
+                    print(f"DEBUG: Reset audio_start_time for new tag ID: {current_tag_id} (with {self.audio_startup_delay}s delay)")
                     
                     # Ensure audio_playing is true for the new tag
                     if not audio_playing:
@@ -466,9 +476,13 @@ class WaveformAnimation(SampleBase):
                 print("DEBUG: Waveform data is an empty list, falling back to default visualization")
                 return
                 
-            # Calculate elapsed time since audio started
+            # Calculate elapsed time since audio started (accounting for startup delay)
             current_time = time.time()
-            elapsed_time = current_time - self.audio_start_time
+            elapsed_time = current_time - self.audio_start_time - self.audio_startup_delay
+            
+            # Don't start progressing until after the startup delay
+            if elapsed_time < 0:
+                elapsed_time = 0
             
             # Calculate frame index based on elapsed time and audio duration
             if self.current_audio_duration > 0:
@@ -478,6 +492,10 @@ class WaveformAnimation(SampleBase):
                 
                 # Make sure we don't exceed the available frames
                 frame_index = min(frame_index, total_frames - 1)
+                
+                # Debug output for troubleshooting
+                if frame_index == 0 or frame_index % 100 == 0 or audio_progress >= 1.0:
+                    print(f"DEBUG: Sync check - elapsed: {elapsed_time:.2f}s, progress: {audio_progress:.3f}, frame: {frame_index}/{total_frames}")
             else:
                 # Fallback to old method if no duration available
                 frame_index = int((time_var / self.frames_per_second) * total_frames) % total_frames
